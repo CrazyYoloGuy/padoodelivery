@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Padoo Delivery - Shop Dashboard</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Shop dashboard for delivery management system">
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Shop App">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Shop App">
+    
+    <!-- Mobile App Switcher -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-TileColor" content="#f59e0b">
+    <meta name="msapplication-TileImage" content="/plogo.png">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-oriented" content="portrait">
+    
+    <!-- Prevent browser branding in app switcher -->
+    <meta name="mobile-web-app-title" content="Shop App">
+    <meta name="apple-mobile-web-app-title" content="Shop App">
+    <meta name="msapplication-tooltip" content="Shop Management Dashboard">
+    <meta name="msapplication-starturl" content="/shop">
+    <meta name="msapplication-navbutton-color" content="#f59e0b">
+    <meta name="msapplication-window" content="width=1024;height=768">
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f59e0b">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#d97706">
+    
+    <!-- Force standalone mode -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="msapplication-navbutton-color" content="#f59e0b">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" href="/plogo.png">
+    <link rel="apple-touch-icon" href="/plogo.png">
+    
+    <!-- Standalone Mode Styles -->
+    <link rel="stylesheet" href="/standalone-mode.css">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="/mainapp/shop/css/styles.css">
+    <link rel="stylesheet" href="/mainapp/shop/css/alerts.css">
+    <link rel="stylesheet" href="/mainapp/shop/css/settings.css">
+    <link rel="stylesheet" href="/mainapp/shop/css/profile.css">
+    
+    <!-- External CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="shop-app">
+    <div id="app">
+        <!-- App Header -->
+        <header class="app-header">
+            <div class="header-logo">
+                <img src="/plogo.png" alt="Padoo Delivery">
+            </div>
+            <h1 class="app-title">Shop Dashboard</h1>
+        </header>
+        
+        <!-- Alerts Page -->
+        <div id="alerts-page" class="page active">
+            <div class="page-header">
+                <div class="header-content">
+                    <h2>Alerts & Team Management</h2>
+                    <div class="header-badge">
+                        <span class="notification-count">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="coming-soon">
+                <div class="coming-soon-icon">
+                    <i class="fas fa-bell"></i>
+                </div>
+                <h3>Coming Soon</h3>
+                <p>Notification system is under development</p>
+            </div>
+        </div>
+
+        <!-- Notifications Page -->
+        <div id="notifications-page" class="page">
+            <div class="page-header">
+                <div class="header-content">
+                    <h2>Notifications</h2>
+                    <div class="header-badge">
+                        <span class="notification-count">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="coming-soon">
+                <div class="coming-soon-icon">
+                    <i class="fas fa-envelope"></i>
+                </div>
+                <h3>Loading...</h3>
+                <p>Notification history is loading</p>
+            </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settings-page" class="page">
+            <div class="page-header">
+                <h2>Shop Settings</h2>
+            </div>
+            
+            <div class="coming-soon">
+                <div class="coming-soon-icon">
+                    <i class="fas fa-cog"></i>
+                </div>
+                <h3>Coming Soon</h3>
+                <p>Shop settings panel is under development</p>
+            </div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profile-page" class="page">
+            <div class="page-header">
+                <h2>Shop Profile</h2>
+            </div>
+            
+            <div class="profile-container">
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <div class="profile-avatar">
+                            <i class="fas fa-store"></i>
+                        </div>
+                        <div class="profile-info">
+                            <h3 id="profile-shop-name">Shop Name</h3>
+                            <p id="profile-email">shop@example.com</p>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-actions">
+                        <button class="btn primary" id="change-password-btn">
+                            <i class="fas fa-key"></i>
+                            Change Password
+                        </button>
+                        <button class="btn secondary logout-btn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <button class="nav-item active" data-page="alerts">
+                <i class="fas fa-users"></i>
+                <span>My Team</span>
+            </button>
+            <button class="nav-item" data-page="notifications">
+                <i class="fas fa-bell"></i>
+                <span>Notifications</span>
+            </button>
+            <button class="nav-item" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+            <button class="nav-item" data-page="profile">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="/mainapp/shop/js/app.js"></script>
+    
+    <!-- Standalone Mode Enforcer -->
+    <script src="/standalone-enforcer.js"></script>
+    <script src="/standalone-detector.js"></script>
+    
+    <!-- PWA Script -->
+    <script src="/pwa-utils.js"></script>
+</body>
+</html> 

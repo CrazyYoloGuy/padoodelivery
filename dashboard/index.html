@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Padoo Delivery - Admin Dashboard</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Admin dashboard for delivery management system">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Admin Dashboard">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Admin Dashboard">
+    
+    <!-- Mobile App Switcher -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-TileColor" content="#8b5cf6">
+    <meta name="msapplication-TileImage" content="/plogo.png">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-oriented" content="portrait">
+    
+    <!-- Prevent browser branding in app switcher -->
+    <meta name="mobile-web-app-title" content="Admin Dashboard">
+    <meta name="apple-mobile-web-app-title" content="Admin Dashboard">
+    <meta name="msapplication-tooltip" content="Delivery System Admin Panel">
+    <meta name="msapplication-starturl" content="/dashboard">
+    <meta name="msapplication-navbutton-color" content="#8b5cf6">
+    <meta name="msapplication-window" content="width=1024;height=768">
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#8b5cf6">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#7c3aed">
+    
+    <!-- Force standalone mode -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="msapplication-navbutton-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" href="/plogo.png">
+    <link rel="apple-touch-icon" href="/plogo.png">
+    
+    <!-- Standalone Mode Styles -->
+    <link rel="stylesheet" href="/standalone-mode.css">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="/dashboard/css/dashboard.css">
+    
+    <!-- External Libraries -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="admin-app">
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="/plogo.png" alt="Padoo">
+                    <span>Padoo Admin</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul class="nav-list">
+                    <li class="nav-item active" data-section="overview">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Dashboard</span>
+                    </li>
+                    <li class="nav-item" data-section="users">
+                        <i class="fas fa-users"></i>
+                        <span>Drivers</span>
+                    </li>
+                    <li class="nav-item" data-section="shops">
+                        <i class="fas fa-store"></i>
+                        <span>Shops</span>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1 id="page-title">Dashboard Overview</h1>
+                <div class="header-actions">
+                    <button class="btn primary" onclick="dashboard.refreshData()">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                </div>
+            </header>
+
+            <!-- Overview Section -->
+            <section id="overview-section" class="content-section active">
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-users">0</h3>
+                            <p>Total Drivers</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-store"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-shops">0</h3>
+                            <p>Active Shops</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="today-registrations">0</h3>
+                            <p>Today's Registrations</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card info">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="growth-rate">+12%</h3>
+                            <p>Growth Rate</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="recent-users">
+                        <div class="section-header">
+                            <h3>Recent Drivers</h3>
+                            <a href="#" onclick="dashboard.navigateToSection('users')" class="view-all">View All</a>
+                        </div>
+                        <div id="recent-users-list" class="list-container">
+                            <!-- Recent users will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <div class="recent-shops">
+                        <div class="section-header">
+                            <h3>Recent Shops</h3>
+                            <a href="#" onclick="dashboard.navigateToSection('shops')" class="view-all">View All</a>
+                        </div>
+                        <div id="recent-shops-list" class="list-container">
+                            <!-- Recent shops will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Users Section -->
+            <section id="users-section" class="content-section">
+                <div class="section-header">
+                    <h2>Driver Management</h2>
+                    <div class="search-filter">
+                        <input type="text" id="user-search" placeholder="Search drivers..." class="search-input">
+                        <select id="user-filter" class="filter-select">
+                            <option value="all">All Drivers</option>
+                            <option value="driver">Active Drivers</option>
+                        </select>
+                        <button class="btn primary" onclick="dashboard.openUserModal()">
+                            <i class="fas fa-plus"></i>
+                            Add Driver
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Email</th>
+                                <th>Type</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Users will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Shops Section -->
+            <section id="shops-section" class="content-section">
+                <div class="section-header">
+                    <h2>Shop Management</h2>
+                    <div class="search-filter">
+                        <input type="text" id="shop-search" placeholder="Search shops..." class="search-input">
+                        <select id="shop-filter" class="filter-select">
+                            <option value="all">All Shops</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="pending">Pending</option>
+                        </select>
+                        <button class="btn primary" onclick="dashboard.openShopModal()">
+                            <i class="fas fa-plus"></i>
+                            Add Shop
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="shop-cards-grid" id="shops-grid">
+                    <!-- Shop cards will be populated here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- JavaScript -->
+    <script src="/dashboard/js/dashboard.js"></script>
+    
+    <!-- Standalone Mode Enforcer -->
+    <script src="/standalone-enforcer.js"></script>
+    <script src="/standalone-detector.js"></script>
+    
+    <!-- PWA Script -->
+    <script src="/pwa-utils.js"></script>
+    
+    <!-- Debug script to ensure dashboard is working -->
+    <script>
+        // Test dashboard availability after a short delay
+        setTimeout(() => {
+            console.log('Testing dashboard availability...');
+            console.log('window.dashboard:', window.dashboard);
+            if (window.dashboard && typeof window.dashboard.openShopModal === 'function') {
+                console.log('✅ Dashboard is properly initialized and openShopModal is available');
+            } else {
+                console.error('❌ Dashboard is not properly initialized');
+                // Try to reinitialize
+                if (!window.dashboard) {
+                    console.log('Attempting to reinitialize dashboard...');
+                    try {
+                        window.dashboard = new Dashboard();
+                        console.log('✅ Dashboard reinitialized successfully');
+                    } catch (error) {
+                        console.error('Failed to reinitialize dashboard:', error);
+                    }
+                }
+            }
+        }, 1000);
+    </script>
+</body>
+</html> 
