@@ -1,0 +1,68 @@
+/* Standalone Mode Styles for PWA */
+/* This file provides styles for when the app is running in standalone mode */
+
+/* Hide browser UI elements when in standalone mode */
+@media (display-mode: standalone) {
+    /* Hide scrollbars for a more native feel */
+    ::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+    }
+    
+    /* Ensure full height utilization */
+    html, body {
+        height: 100vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+    
+    /* Prevent pull-to-refresh on mobile */
+    body {
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Optimize for mobile standalone */
+    .app-container {
+        height: 100vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Hide any browser-specific elements */
+    .browser-only {
+        display: none !important;
+    }
+}
+
+/* General standalone optimizations */
+@media (display-mode: standalone), (display-mode: minimal-ui) {
+    /* Ensure proper viewport handling */
+    .main-content {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+    
+    /* Optimize touch targets */
+    button, .btn, [role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Improve text readability */
+    body {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+}
+
+/* Fallback for browsers that don't support display-mode */
+@media (max-width: 768px) {
+    .app-container {
+        height: 100vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+} 

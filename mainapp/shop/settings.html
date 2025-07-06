@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shop Settings - DeliveryApp</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css/settings.css">
+</head>
+<body>
+    <div class="settings-container">
+        <header class="settings-header">
+            <h1><i class="fas fa-cog"></i> Shop Settings</h1>
+            <p>Manage your shop preferences and delivery team</p>
+        </header>
+
+        <!-- Delivery Team Management -->
+        <section class="settings-section">
+            <div class="section-header">
+                <h2><i class="fas fa-truck"></i> Delivery Team Management</h2>
+                <p>Find and add delivery drivers to your team</p>
+            </div>
+
+            <!-- Search and Filters -->
+            <div class="search-controls">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="driver-search" placeholder="Search drivers by email...">
+                </div>
+                <div class="filter-controls">
+                    <span class="results-count" id="results-count">Loading...</span>
+                </div>
+            </div>
+
+            <!-- Available Drivers -->
+            <div class="drivers-section">
+                <h3>Available Drivers</h3>
+                <div id="drivers-list" class="drivers-grid">
+                    <!-- Drivers will be loaded here -->
+                </div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="pagination-controls">
+                    <!-- Pagination will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Selected Drivers -->
+            <div class="selected-section">
+                <h3>Your Delivery Team <span id="selected-count" class="count-badge">0</span></h3>
+                <div id="selected-drivers" class="selected-drivers-grid">
+                    <!-- Selected drivers will be shown here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Notifications Section -->
+        <section class="settings-section">
+            <div class="section-header">
+                <h2><i class="fas fa-bell"></i> Notifications</h2>
+                <p>Send notifications to your delivery team</p>
+            </div>
+
+            <!-- Notification Settings -->
+            <div class="notification-settings">
+                <h3>Notification Settings</h3>
+                <div class="settings-grid">
+                    <div class="setting-card">
+                        <div class="setting-info">
+                            <h4>Push Notifications</h4>
+                            <p>Receive real-time alerts on your device</p>
+                        </div>
+                        <div class="setting-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="push-notifications" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-card">
+                        <div class="setting-info">
+                            <h4>Email Notifications</h4>
+                            <p>Receive notifications via email</p>
+                        </div>
+                        <div class="setting-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="email-notifications" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-card">
+                        <div class="setting-info">
+                            <h4>Sound Alerts</h4>
+                            <p>Play sound when notifications arrive</p>
+                        </div>
+                        <div class="setting-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="sound-alerts" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-card">
+                        <div class="setting-info">
+                            <h4>Order Updates</h4>
+                            <p>Get notified about order status changes</p>
+                        </div>
+                        <div class="setting-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="order-updates" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-actions">
+                    <button id="save-notification-settings" class="primary-btn">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+
+            <div class="notification-controls">
+                <div class="notification-box">
+                    <textarea id="notification-message" placeholder="Type your message to delivery drivers..."></textarea>
+                    <div class="notification-actions">
+                        <div class="mass-actions-dropdown">
+                            <button id="mass-actions-btn" class="secondary-btn">
+                                <i class="fas fa-tasks"></i>
+                                Mass Actions
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu" id="mass-actions-menu">
+                                <a href="#" id="mass-delete-btn"><i class="fas fa-trash-alt"></i> Delete All Notifications</a>
+                                <a href="#" id="mass-accept-btn"><i class="fas fa-check-double"></i> Accept All Pending</a>
+                                <a href="#" id="mass-mark-read-btn"><i class="fas fa-envelope-open"></i> Mark All as Read</a>
+                            </div>
+                        </div>
+                        <button id="send-notification-btn" class="notification-btn">
+                            <i class="fas fa-bell"></i>
+                            Send to All Drivers
+                            <span id="notification-count" class="notification-count">0</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/settings.js"></script>
+</body>
+</html> 

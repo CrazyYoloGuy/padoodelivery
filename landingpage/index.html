@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeliverRoute - Professional Delivery Management</title>
+    <meta name="description" content="Complete delivery management system for drivers and shops">
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ff6b35">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="DeliverRoute">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/landingpage/styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <div class="brand-icon">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <rect width="32" height="32" rx="8" fill="#ff6b35"/>
+                        <path d="M8 12h16l-2 8H10l-2-8z" fill="white"/>
+                        <circle cx="12" cy="24" r="2" fill="white"/>
+                        <circle cx="20" cy="24" r="2" fill="white"/>
+                    </svg>
+                </div>
+                <span class="brand-text">DeliverRoute</span>
+            </div>
+            <div class="nav-menu">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#how-it-works" class="nav-link">How It Works</a>
+                <a href="#reviews" class="nav-link">Reviews</a>
+                <a href="#download" class="nav-link">Download</a>
+                <a href="/login" class="nav-btn">Get Started Free</a>
+            </div>
+            <div class="mobile-menu-btn">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content-centered">
+                <div class="hero-badge">#1 App for Delivery Drivers</div>
+                <h1 class="hero-title">
+                    Deliver Smarter, <span class="text-orange">Earn More</span>
+                </h1>
+                <p class="hero-description">
+                    Stop wasting time and fuel on inefficient routes. DeliverRoute optimizes your deliveries, tracks your earnings, and keeps you connected with customers—all in one powerful app.
+                </p>
+                <div class="hero-buttons">
+                    <button id="downloadBtn" class="btn btn-primary">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
+                        </svg>
+                        Download Now - Free
+                    </button>
+                    <button class="btn btn-secondary">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        Watch Demo
+                    </button>
+                </div>
+                <div class="hero-stats">
+                    <div class="stat-item">
+                        <div class="stat-icon">⭐</div>
+                        <div class="stat-text">
+                            <span class="stat-number">4.9</span>
+                            <span class="stat-label">App Store Rating</span>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-text">
+                            <span class="stat-number">50K+</span>
+                            <span class="stat-label">Active Drivers</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Everything You Need to Succeed</h2>
+                <p class="section-subtitle">
+                    Powerful features designed specifically for delivery drivers to maximize efficiency and earnings
+                </p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fef3c7"/>
+                            <path d="M12 8v8M8 12h8" stroke="#f59e0b" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Real-Time Order Tracking</h3>
+                    <p class="feature-description">
+                        Get live updates on all your deliveries with GPS precision. Never lose track of an order again.
+                    </p>
+                </div>
+                <div class="feature-card featured">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fed7aa"/>
+                            <path d="M7 10l5 5 5-5" stroke="#ff6b35" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Optimized Route Planning</h3>
+                    <p class="feature-description">
+                        AI-powered routing saves you time and fuel costs. Complete more deliveries in less time.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fef3c7"/>
+                            <path d="M12 6v12M6 12h12" stroke="#f59e0b" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Instant Status Updates</h3>
+                    <p class="feature-description">
+                        Keep customers informed with automatic delivery notifications and real-time status updates.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fef3c7"/>
+                            <circle cx="12" cy="12" r="4" fill="#f59e0b"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Integrated Communication</h3>
+                    <p class="feature-description">
+                        Built-in messaging and calling features to communicate seamlessly with customers and dispatch.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fef3c7"/>
+                            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="#f59e0b"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Performance Analytics</h3>
+                    <p class="feature-description">
+                        Track your earnings, delivery times, and customer ratings to optimize your performance.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="#fef3c7"/>
+                            <circle cx="12" cy="12" r="3" fill="#f59e0b"/>
+                            <path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24" stroke="#f59e0b" stroke-width="2"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-title">Smart Scheduling</h3>
+                    <p class="feature-description">
+                        Manage your delivery schedule efficiently with intelligent time slot recommendations.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download">
+        <div class="container">
+            <div class="download-content-centered">
+                <h2 class="download-title">Get Started Today</h2>
+                <p class="download-description">
+                    Download our Progressive Web App for the best experience. Works on all devices and platforms.
+                </p>
+                <div class="download-features">
+                    <div class="download-feature">
+                        <span class="check-icon">✓</span>
+                        <span>Works offline</span>
+                    </div>
+                    <div class="download-feature">
+                        <span class="check-icon">✓</span>
+                        <span>Fast loading</span>
+                    </div>
+                    <div class="download-feature">
+                        <span class="check-icon">✓</span>
+                        <span>Push notifications</span>
+                    </div>
+                    <div class="download-feature">
+                        <span class="check-icon">✓</span>
+                        <span>Auto updates</span>
+                    </div>
+                </div>
+                <button id="downloadBtnMain" class="btn btn-large">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
+                    </svg>
+                    Install DeliverRoute
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Instructions Modal -->
+    <div id="installModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Install DeliverRoute App</h3>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="install-steps" id="installSteps">
+                    <!-- Steps will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="brand-icon">
+                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <rect width="32" height="32" rx="8" fill="#ff6b35"/>
+                            <path d="M8 12h16l-2 8H10l-2-8z" fill="white"/>
+                            <circle cx="12" cy="24" r="2" fill="white"/>
+                            <circle cx="20" cy="24" r="2" fill="white"/>
+                        </svg>
+                    </div>
+                    <span class="footer-title">DeliverRoute</span>
+                </div>
+                <div class="footer-links">
+                    <a href="/login" class="footer-link">Login</a>
+                    <a href="/dashboard" class="footer-link">Dashboard</a>
+                    <a href="#features" class="footer-link">Features</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 DeliverRoute. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="/landingpage/script.js"></script>
+</body>
+</html> 

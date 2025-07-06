@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Padoo Delivery - Sign In</title>
+    
+    <!-- Prevent caching and back button navigation -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Complete delivery management system for drivers and shops">
+    <meta name="theme-color" content="#FF6B35">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Padoo Delivery">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Padoo Delivery">
+    
+    <!-- Mobile App Switcher -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-TileColor" content="#FF6B35">
+    <meta name="msapplication-TileImage" content="/icons/icon-192x192.png">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-oriented" content="portrait">
+    
+    <!-- Prevent browser branding in app switcher -->
+    <meta name="mobile-web-app-title" content="Padoo Delivery">
+    <meta name="apple-mobile-web-app-title" content="Padoo Delivery">
+    <meta name="msapplication-tooltip" content="Padoo Delivery Management System">
+    <meta name="msapplication-starturl" content="/">
+    <meta name="msapplication-navbutton-color" content="#FF6B35">
+    <meta name="msapplication-window" content="width=1024;height=768">
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FF6B35">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#E55A2B">
+    
+    <!-- Force standalone mode -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="msapplication-navbutton-color" content="#FF6B35">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/pwa-utils.js" as="script">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+    <!-- Splash Screen Animation -->
+    <div class="splash-screen">
+        <div class="splash-logo">
+            <img src="/icons/icon-192x192.png" alt="Padoo Delivery">
+            <div class="splash-loader">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="login-container">
+        <div class="login-header">
+            <div class="logo">
+                <img src="/icons/icon-192x192.png" alt="Padoo Delivery">
+            </div>
+            <h1>Welcome Back</h1>
+            <p>Sign in to continue to Padoo Delivery</p>
+        </div>
+
+        <form class="login-form" id="login-form">
+            <div class="role-selector">
+                <label>Choose your account type</label>
+                <div class="role-options">
+                    <div class="role-option active" data-role="driver">
+                        <i class="fas fa-car"></i>
+                        <span>Delivery Driver</span>
+                    </div>
+                    <div class="role-option" data-role="shop">
+                        <i class="fas fa-store"></i>
+                        <span>Shop Owner</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-message" id="error-message"></div>
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner"></i>
+                Signing you in...
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <div class="input-wrapper">
+                    <input type="email" id="email" class="form-input" placeholder="Enter your email address" required autocomplete="email">
+                    <i class="fas fa-envelope"></i>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+                    <i class="fas fa-lock"></i>
+                    <button type="button" id="toggle-password" class="toggle-password" aria-label="Toggle password visibility">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="login-btn" id="login-btn">
+                <span class="btn-text">Sign In</span>
+                <i class="fas fa-arrow-right"></i>
+            </button>
+        </form>
+
+        <div class="footer">
+            <p>Need assistance? <a href="mailto:support@padoo.com">Contact Support</a></p>
+        </div>
+    </div>
+
+    <script>
+        class LoginApp {
+            constructor() {
+                this.selectedRole = 'driver';
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.initializeAnimations();
+            }
+
+            initializeAnimations() {
+                // Handle splash screen animation
+                setTimeout(() => {
+                    const splashScreen = document.querySelector('.splash-screen');
+                    if (splashScreen) {
+                        splashScreen.classList.add('fade-out');
+                        setTimeout(() => {
+                            splashScreen.remove();
+                        }, 500);
+                    }
+                }, 1500);
+            }
+
+            bindEvents() {
+                // Role selection
+                document.querySelectorAll('.role-option').forEach(option => {
+                    option.addEventListener('click', (e) => {
+                        const role = e.currentTarget.dataset.role;
+                        this.selectRole(role);
+                    });
+                });
+
+                // Form submission
+                document.getElementById('login-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleLogin();
+                });
+
+                // Toggle password visibility
+                const togglePassword = document.getElementById('toggle-password');
+                if (togglePassword) {
+                    togglePassword.addEventListener('click', () => {
+                        const passwordInput = document.getElementById('password');
+                        const icon = togglePassword.querySelector('i');
+                        
+                        if (passwordInput.type === 'password') {
+                            passwordInput.type = 'text';
+                            icon.classList.remove('fa-eye');
+                            icon.classList.add('fa-eye-slash');
+                        } else {
+                            passwordInput.type = 'password';
+                            icon.classList.remove('fa-eye-slash');
+                            icon.classList.add('fa-eye');
+                        }
+                        
+                        // Focus back on password input
+                        passwordInput.focus();
+                    });
+                }
+
+                // Input focus effects
+                document.querySelectorAll('.form-input').forEach(input => {
+                    input.addEventListener('focus', () => {
+                        input.parentElement.classList.add('input-focused');
+                    });
+                    
+                    input.addEventListener('blur', () => {
+                        input.parentElement.classList.remove('input-focused');
+                    });
+                });
+            }
+
+            selectRole(role) {
+                this.selectedRole = role;
+                
+                // Update UI with smooth animation
+                document.querySelectorAll('.role-option').forEach(option => {
+                    option.classList.remove('active');
+                });
+                document.querySelector(`[data-role="${role}"]`).classList.add('active');
+            }
+
+            async handleLogin() {
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+
+                if (!email || !password) {
+                    this.showError('Please fill in all fields');
+                    return;
+                }
+
+                this.showLoading(true);
+                this.hideError();
+
+                try {
+                    console.log('Attempting login as:', this.selectedRole, 'with email:', email);
+
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            email,
+                            password,
+                            loginType: this.selectedRole
+                        }),
+                    });
+
+                    const result = await response.json();
+                    console.log('Login response:', result);
+
+                    if (result.success) {
+                        this.showSuccess();
+                        
+                        // Store user data based on role
+                        if (this.selectedRole === 'driver') {
+                            localStorage.setItem('userSession', JSON.stringify({
+                                user: result.user,
+                                userType: result.userType,
+                                sessionToken: result.sessionToken,
+                                loginTime: new Date().toISOString()
+                            }));
+                        } else {
+                            localStorage.setItem('shopSession', JSON.stringify({
+                                shop: result.user,
+                                userType: result.userType,
+                                sessionToken: result.sessionToken,
+                                loginTime: new Date().toISOString()
+                            }));
+                        }
+
+                        console.log('Redirecting to:', result.redirectUrl);
+                        
+                        // Redirect with animation
+                        document.querySelector('.login-container').classList.add('slide-out');
+                        setTimeout(() => {
+                            window.location.href = result.redirectUrl;
+                        }, 600);
+                        
+                    } else {
+                        this.showError(result.message || 'Login failed');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    this.showError('Network error. Please try again.');
+                } finally {
+                    setTimeout(() => {
+                        this.showLoading(false);
+                    }, 1000);
+                }
+            }
+
+            showSuccess() {
+                const btnEl = document.getElementById('login-btn');
+                const btnText = btnEl.querySelector('.btn-text');
+                const btnIcon = btnEl.querySelector('i');
+                
+                btnText.textContent = 'Success!';
+                btnIcon.className = 'fas fa-check';
+                btnEl.classList.add('success');
+            }
+
+            showError(message) {
+                const errorEl = document.getElementById('error-message');
+                errorEl.textContent = message;
+                errorEl.style.display = 'block';
+                
+                // Shake animation
+                const container = document.querySelector('.login-container');
+                container.classList.add('shake');
+                setTimeout(() => {
+                    container.classList.remove('shake');
+                }, 400);
+            }
+
+            hideError() {
+                const errorEl = document.getElementById('error-message');
+                errorEl.style.display = 'none';
+            }
+
+            showLoading(show) {
+                const loadingEl = document.getElementById('loading');
+                const btnEl = document.getElementById('login-btn');
+                const btnText = btnEl.querySelector('.btn-text');
+                const btnIcon = btnEl.querySelector('i');
+                
+                if (show) {
+                    loadingEl.style.display = 'block';
+                    btnEl.disabled = true;
+                    btnText.textContent = 'Signing In';
+                    btnIcon.className = 'fas fa-spinner fa-spin';
+                } else {
+                    loadingEl.style.display = 'none';
+                    btnEl.disabled = false;
+                    if (!btnEl.classList.contains('success')) {
+                        btnText.textContent = 'Sign In';
+                        btnIcon.className = 'fas fa-arrow-right';
+                    }
+                }
+            }
+        }
+
+        // Initialize login app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new LoginApp();
+        });
+    </script>
+    
+    <!-- PWA Scripts -->
+    <script src="/pwa-utils.js"></script>
+</body>
+</html> 

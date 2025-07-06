@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Padoo Delivery - Driver Dashboard</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Driver dashboard for delivery management system">
+    <meta name="theme-color" content="#10b981">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Driver App">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Driver App">
+    
+    <!-- Mobile App Switcher -->
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-TileColor" content="#10b981">
+    <meta name="msapplication-TileImage" content="/plogo.png">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-oriented" content="portrait">
+    
+    <!-- Prevent browser branding in app switcher -->
+    <meta name="mobile-web-app-title" content="Driver App">
+    <meta name="apple-mobile-web-app-title" content="Driver App">
+    <meta name="msapplication-tooltip" content="Delivery Driver Dashboard">
+    <meta name="msapplication-starturl" content="/app">
+    <meta name="msapplication-navbutton-color" content="#10b981">
+    <meta name="msapplication-window" content="width=1024;height=768">
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#10b981">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#059669">
+    
+    <!-- Force standalone mode -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="msapplication-navbutton-color" content="#10b981">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" href="/plogo.png">
+    <link rel="apple-touch-icon" href="/plogo.png">
+    
+    <!-- Standalone Mode Styles -->
+    <link rel="stylesheet" href="/standalone-mode.css">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="/mainapp/delivery/css/styles.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/home.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/orders.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/settings.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/profile.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/modals.css">
+    <link rel="stylesheet" href="/mainapp/delivery/css/notifications.css">
+    
+    <!-- External CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="driver-app">
+    <div id="app">
+        <!-- App Header -->
+        <header class="app-header">
+            <div class="header-logo">
+                <img src="/plogo.png" alt="Padoo Delivery">
+            </div>
+            <h1 class="app-title">Padoo Delivery</h1>
+        </header>
+        
+        <!-- Home Page -->
+        <div id="home-page" class="page active">
+            <div class="page-header">
+                <div class="header-content">
+                    <h2>Driver Dashboard</h2>
+                    <div class="header-date">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span id="current-date"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Stats -->
+            <div class="quick-stats">
+                <div class="stat-card earnings">
+                    <div class="stat-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="total-earnings">$0.00</h3>
+                        <p>Total Earnings</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card orders">
+                    <div class="stat-icon">
+                        <i class="fas fa-box"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="total-orders">0</h3>
+                        <p>Total Orders</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card today">
+                    <div class="stat-icon">
+                        <i class="fas fa-calendar-day"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="today-orders">0</h3>
+                        <p>Today's Orders</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card shops">
+                    <div class="stat-icon">
+                        <i class="fas fa-store"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="total-shops">0</h3>
+                        <p>Partner Shops</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="quick-actions">
+                <h3 class="section-title">
+                    <i class="fas fa-zap"></i>
+                    Quick Actions
+                </h3>
+                <div class="action-cards">
+                    <div class="action-card" data-action="add-order">
+                        <div class="action-icon">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="action-content">
+                            <h4>Add New Order</h4>
+                            <p>Record a new delivery order</p>
+                        </div>
+                    </div>
+                    
+                    <div class="action-card" data-action="manage-shops">
+                        <div class="action-icon">
+                            <i class="fas fa-store"></i>
+                        </div>
+                        <div class="action-content">
+                            <h4>Manage Shops</h4>
+                            <p>Add or edit partner shops</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Activity -->
+            <div class="recent-activity-section">
+                <h3 class="section-title">
+                    <i class="fas fa-history"></i>
+                    Recent Activity
+                </h3>
+                <div id="recent-activity"></div>
+            </div>
+        </div>
+
+        <!-- Orders Page -->
+        <div id="orders-page" class="page">
+            <div class="page-header">
+                <h2>My Orders</h2>
+                <div class="orders-filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="today">Today</button>
+                    <button class="filter-btn" data-filter="week">This Week</button>
+                    <button class="filter-btn" data-filter="month">This Month</button>
+                </div>
+            </div>
+            
+            <div id="orders-container"></div>
+        </div>
+
+        <!-- Notifications Page -->
+        <div id="notifications-page" class="page">
+            <div class="page-header">
+                <h2>Notifications</h2>
+                <div class="notifications-actions">
+                    <div class="dropdown">
+                        <button class="dropdown-btn" id="notifications-menu-btn">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div class="dropdown-menu" id="notifications-menu">
+                            <button class="dropdown-item" id="refresh-notifications">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="dropdown-item" id="complete-all-notifications">
+                                <i class="fas fa-check-double"></i> Complete All
+                            </button>
+                            <button class="dropdown-item" id="delete-all-notifications">
+                                <i class="fas fa-trash-alt"></i> Delete All
+                    </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="notifications-container">
+                <div id="notifications-list" class="notifications-list">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading notifications...
+                    </div>
+                </div>
+                
+                <div id="no-notifications" class="no-data-message" style="display: none;">
+                    <i class="fas fa-bell-slash"></i>
+                    <h3>No Notifications</h3>
+                    <p>You don't have any notifications yet.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settings-page" class="page">
+            <div class="page-header">
+                <h2>Settings</h2>
+            </div>
+            
+            <div class="settings-container">
+                <div class="settings-card">
+                    <div class="settings-header">
+                        <div class="settings-icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div>
+                            <h3>Earnings Per Order</h3>
+                            <p>Set your default earnings amount per delivery order</p>
+                        </div>
+                    </div>
+                    
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label for="earnings-per-order">Default Earnings</label>
+                            <div class="input-group">
+                                <span class="input-prefix">$</span>
+                                <input type="number" id="earnings-per-order" step="0.01" min="0" value="1.50">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn primary">
+                            <i class="fas fa-save"></i>
+                            Save Settings
+                        </button>
+                    </form>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-header">
+                        <div class="settings-icon">
+                            <i class="fas fa-store"></i>
+                        </div>
+                        <div>
+                            <h3>Shop Management</h3>
+                            <p>Add and manage your partner shops</p>
+                        </div>
+                    </div>
+                    
+                    <button class="btn primary" id="add-shop-btn">
+                        <i class="fas fa-plus"></i>
+                        Add New Shop
+                    </button>
+                    
+                    <div id="shops-container" class="shops-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profile-page" class="page">
+            <div class="page-header">
+                <h2>Profile</h2>
+            </div>
+            
+            <div class="profile-container">
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <div class="profile-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="profile-info">
+                            <h3 id="profile-name">Driver Name</h3>
+                            <p id="profile-email">driver@example.com</p>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-actions">
+                        <button class="btn secondary logout-btn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <button class="nav-item active" data-page="home">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </button>
+            <button class="nav-item" data-page="orders">
+                <i class="fas fa-list"></i>
+                <span>Orders</span>
+            </button>
+            <button class="nav-item" data-page="notifications">
+                <i class="fas fa-bell"></i>
+                <span>Notifications</span>
+                <span id="notification-badge" class="notification-badge" style="display: none;">0</span>
+            </button>
+            <button class="nav-item" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+            <button class="nav-item" data-page="profile">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </button>
+        </div>
+
+        <!-- Add Order Button -->
+        <button class="floating-add-btn" id="add-order-btn" title="Add Order">
+            <i class="fas fa-plus"></i>
+        </button>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script src="/mainapp/delivery/js/app.js"></script>
+    
+    <!-- Standalone Mode Enforcer -->
+    <script src="/standalone-enforcer.js"></script>
+    <script src="/standalone-detector.js"></script>
+    
+    <!-- PWA Script -->
+    <script src="/pwa-utils.js"></script>
+</body>
+</html> 

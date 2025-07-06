@@ -1,0 +1,80 @@
+{
+  "name": "Padoo Delivery",
+  "short_name": "Padoo",
+  "description": "Complete delivery management system for drivers and shops",
+  "start_url": "/login?standalone=true",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen"],
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/plogo.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Driver App",
+      "short_name": "Driver",
+      "description": "Open the delivery driver app",
+      "url": "/app",
+      "icons": [{ "src": "/icons/plogo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Shop App",
+      "short_name": "Shop",
+      "description": "Open the shop management app",
+      "url": "/shop",
+      "icons": [{ "src": "/icons/plogo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Admin",
+      "description": "Open the admin dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/plogo.png", "sizes": "96x96" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "protocol_handlers": [],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred"
+} 
