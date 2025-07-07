@@ -4089,18 +4089,37 @@ class DeliveryApp {
             const result = await response.json();
 
             if (result.success) {
-                // Update the notification in the local array instead of reloading all
+                // Update the notification in the local array
                 const index = this.notifications.findIndex(n => n.id === notificationId);
                 if (index !== -1) {
                     this.notifications[index].status = 'confirmed';
                     this.notifications[index].is_read = true;
+                    this.notifications[index].confirmed_at = new Date().toISOString();
+                    
+                    // Re-render the specific notification card
                     this.renderSingleNotification(this.notifications[index]);
                 }
+                
                 // Close the modal after confirmation
-            this.closeConfirmationModal();
+                this.closeConfirmationModal();
+                
                 // Update badge and re-render notifications for instant feedback
                 this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
                 this.renderNotifications(this.notifications);
+                
+                // Send WebSocket message to broadcast the update
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'notification_update',
+                        action: 'confirmed',
+                        notificationId: notificationId,
+                        data: {
+                            status: 'confirmed',
+                            confirmed_at: new Date().toISOString()
+                        }
+                    }));
+                }
+                
                 this.showToast('Notification confirmed successfully', 'success');
             } else {
                 // Close modal even if not found
@@ -4185,6 +4204,18 @@ class DeliveryApp {
             
             this.renderNotifications(this.notifications);
             this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
+            
+            // Send WebSocket message to broadcast the deletion
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'notification_update',
+                    action: 'deleted',
+                    notificationId: notificationId,
+                    data: {
+                        deleted: true
+                    }
+                }));
+            }
             
             this.showToast('Notification deleted successfully! (Removed from both driver and shop views)', 'success');
             console.log('=== EXECUTE DELETE NOTIFICATION END ===');
@@ -4445,33 +4476,40 @@ class DeliveryApp {
     
     // Handle real-time notification update
     handleNotificationUpdate(data) {
+        console.log('🔄 Delivery app received notification update:', data);
         const { action, notificationId, data: updateData } = data;
+        
         const idx = this.notifications.findIndex(n => n.id === notificationId);
-        if (action === 'confirmed') {
-            if (idx !== -1) {
+        if (idx !== -1) {
+            if (action === 'confirmed') {
                 this.notifications[idx] = {
                     ...this.notifications[idx],
                     status: 'confirmed',
                     confirmed_at: updateData?.confirmed_at
                 };
-                this.showToast('Notification confirmed', 'success');
-            }
-        } else if (action === 'deleted') {
-            if (idx !== -1) {
+                this.showToast('✅ Notification confirmed', 'success');
+            } else if (action === 'deleted') {
                 this.notifications.splice(idx, 1);
-                this.showToast('Notification deleted', 'info');
-            }
-        } else if (action === 'edited') {
-            if (idx !== -1) {
+                this.showToast('🗑️ Notification deleted', 'info');
+            } else if (action === 'edited') {
                 this.notifications[idx] = {
                     ...this.notifications[idx],
                     ...updateData
                 };
-                this.showToast('Notification updated', 'info');
+                this.showToast('✏️ Notification updated', 'info');
             }
-        }
-        if (this.currentPage === 'notifications') {
-            this.renderNotifications(this.notifications);
+            
+            // Update UI if on notifications page
+            if (this.currentPage === 'notifications') {
+                this.renderNotifications(this.notifications);
+            }
+            
+            // Update notification count
+            this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
+            
+            console.log(`🔄 Notification update processed: ${action} for ID ${notificationId}`);
+        } else {
+            console.log(`⚠️ Notification ${notificationId} not found in local array`);
         }
     }
     
@@ -4526,6 +4564,8 @@ class DeliveryApp {
     
     // Handle real-time notification
     handleRealtimeNotification(notification) {
+        console.log('🔔 Delivery app received real-time notification:', notification);
+        
         // Check if notification already exists
         const existingIndex = this.notifications.findIndex(n => n.id === notification.id);
         if (existingIndex !== -1) {
@@ -4534,23 +4574,32 @@ class DeliveryApp {
                 ...this.notifications[existingIndex],
                 ...notification
             };
+            console.log('🔄 Updated existing notification');
+            
             // Re-render notifications if on notifications page
             if (this.currentPage === 'notifications') {
                 this.renderNotifications(this.notifications);
             }
+            
             // Show edit toast
-            this.showToast('Notification has been edited', 'info');
+            this.showToast('✏️ Notification has been edited', 'info');
         } else {
             // Add as new notification (real-time push)
-        this.notifications.unshift(notification);
-        if (this.currentPage === 'notifications') {
-            this.renderNotifications(this.notifications);
-        }
+            this.notifications.unshift(notification);
+            console.log('➕ Added new notification');
+            
+            if (this.currentPage === 'notifications') {
+                this.renderNotifications(this.notifications);
+            }
+            
             this.playNotificationSound(true); // Use strong sound
             this.showBrowserNotification(notification);
-            this.showToast(`New notification from ${notification.shop?.name || 'Shop'}: ${notification.message}`, 'info');
-        this.fetchNotificationCount();
+            this.showToast(`🔔 New notification from ${notification.shop?.name || 'Shop'}: ${notification.message}`, 'info');
+            this.fetchNotificationCount();
         }
+        
+        // Update notification count
+        this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
     }
     
     // Handle session conflict
@@ -5513,6 +5562,20 @@ class DeliveryApp {
             
             // Update UI
             this.renderNotifications(this.notifications);
+            
+            // Send WebSocket message to broadcast the update
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'notification_update',
+                    action: 'edited',
+                    notificationId: notificationId,
+                    data: {
+                        message: newMessage,
+                        updated_at: new Date().toISOString()
+                    }
+                }));
+            }
+            
             this.showToast('Notification updated successfully', 'success');
             this.hideLoadingOverlay();
             

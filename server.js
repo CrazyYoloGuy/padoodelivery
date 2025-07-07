@@ -2222,6 +2222,27 @@ app.put('/api/driver/:driverId/notifications/:notificationId/confirm', async (re
             confirmed_at: new Date().toISOString()
         });
         
+        // Also broadcast to the shop that created the notification
+        if (notification.shop_id) {
+            // Broadcast to all connected shop clients for this shop
+            clients.forEach((client, ws) => {
+                if (ws.readyState === WebSocket.OPEN && 
+                    client.userType === 'shop' && 
+                    client.shopId === notification.shop_id) {
+                    ws.send(JSON.stringify({
+                        type: 'notification_update',
+                        action: 'confirmed',
+                        notificationId: notificationId,
+                        data: {
+                            status: 'confirmed',
+                            confirmed_at: new Date().toISOString(),
+                            driver_email: driver?.email
+                        }
+                    }));
+                }
+            });
+        }
+        
         console.log(`Confirmed notification ${notificationId}`);
         
         res.json({
@@ -2233,6 +2254,207 @@ app.put('/api/driver/:driverId/notifications/:notificationId/confirm', async (re
         res.status(500).json({
             success: false,
             message: 'Failed to confirm notification',
+            error: error.message
+        });
+    }
+});
+
+// PUT /api/driver/:driverId/notifications/:notificationId - Edit a notification
+app.put('/api/driver/:driverId/notifications/:notificationId', async (req, res) => {
+    try {
+        const { driverId, notificationId } = req.params;
+        const { message } = req.body;
+        
+        console.log(`Editing notification ${notificationId} for driver ${driverId}`);
+        
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Message is required and cannot be empty'
+            });
+        }
+        
+        // First, get the notification details
+        const { data: notification, error: fetchError } = await supabase
+            .from('driver_notifications')
+            .select('id, shop_id, message')
+            .eq('id', notificationId)
+            .eq('driver_id', driverId)
+            .single();
+        
+        if (fetchError || !notification) {
+            console.error('Error fetching notification:', fetchError);
+            return res.status(404).json({
+                success: false,
+                message: 'Notification not found'
+            });
+        }
+        
+        // Update notification message
+        const { data, error } = await supabase
+            .from('driver_notifications')
+            .update({ 
+                message: message.trim(),
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', notificationId)
+            .eq('driver_id', driverId)
+            .select('id, message')
+            .single();
+        
+        if (error) {
+            console.error('Error updating notification:', error);
+            throw error;
+        }
+        
+        // Broadcast real-time update to all connected drivers
+        broadcastNotificationUpdate(driverId, 'driver', 'edited', notificationId, {
+            message: message.trim(),
+            updated_at: new Date().toISOString()
+        });
+        
+        // Also broadcast to the shop that created the notification
+        if (notification.shop_id) {
+            // Broadcast to all connected shop clients for this shop
+            clients.forEach((client, ws) => {
+                if (ws.readyState === WebSocket.OPEN && 
+                    client.userType === 'shop' && 
+                    client.shopId === notification.shop_id) {
+                    ws.send(JSON.stringify({
+                        type: 'notification_update',
+                        action: 'edited',
+                        notificationId: notificationId,
+                        data: {
+                            message: message.trim(),
+                            updated_at: new Date().toISOString()
+                        }
+                    }));
+                }
+            });
+        }
+        
+        console.log(`Updated notification ${notificationId}`);
+        
+        res.json({
+            success: true,
+            message: 'Notification updated successfully',
+            data: {
+                id: data.id,
+                message: data.message
+            }
+        });
+    } catch (error) {
+        console.error('Error updating notification:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update notification',
+            error: error.message
+        });
+    }
+});
+
+// PUT /api/shop/:shopId/notifications/:notificationId - Edit a shop notification
+app.put('/api/shop/:shopId/notifications/:notificationId', async (req, res) => {
+    try {
+        const { shopId, notificationId } = req.params;
+        const { message } = req.body;
+        
+        console.log(`Editing shop notification ${notificationId} for shop ${shopId}`);
+        
+        if (!message || typeof message !== 'string' || message.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Message is required and cannot be empty'
+            });
+        }
+        
+        // First, try to update in driver_notifications table
+        const { data: driverNotification, error: driverError } = await supabase
+            .from('driver_notifications')
+            .update({ 
+                message: message.trim(),
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', notificationId)
+            .eq('shop_id', parseInt(shopId))
+            .select('id, driver_id, message')
+            .single();
+        
+        if (!driverError && driverNotification) {
+            // Broadcast real-time update to the driver
+            broadcastNotificationUpdate(driverNotification.driver_id, 'driver', 'edited', notificationId, {
+                message: message.trim(),
+                updated_at: new Date().toISOString()
+            });
+            
+            // Broadcast real-time update to all connected shops
+            broadcastNotificationUpdate(parseInt(shopId).toString(), 'shop', 'edited', notificationId, {
+                message: message.trim(),
+                updated_at: new Date().toISOString()
+            });
+            
+            console.log(`Updated driver notification ${notificationId}`);
+            
+            res.json({
+                success: true,
+                message: 'Notification updated successfully',
+                data: {
+                    id: driverNotification.id,
+                    message: driverNotification.message
+                }
+            });
+            return;
+        }
+        
+        // If not found in driver_notifications, try shop_notifications
+        const { data: shopNotification, error: shopError } = await supabase
+            .from('shop_notifications')
+            .update({ 
+                message: message.trim(),
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', notificationId)
+            .eq('shop_id', parseInt(shopId))
+            .select('id, driver_id, original_notification_id, message')
+            .single();
+        
+        if (shopError || !shopNotification) {
+            console.error('Error updating shop notification:', shopError);
+            return res.status(404).json({
+                success: false,
+                message: 'Notification not found'
+            });
+        }
+        
+        // Broadcast real-time update to all connected shops
+        broadcastNotificationUpdate(parseInt(shopId).toString(), 'shop', 'edited', notificationId, {
+            message: message.trim(),
+            updated_at: new Date().toISOString()
+        });
+        
+        // Also broadcast to the driver if this is a shop notification with original_notification_id
+        if (shopNotification.original_notification_id) {
+            broadcastNotificationUpdate(shopNotification.driver_id, 'driver', 'edited', shopNotification.original_notification_id, {
+                message: message.trim(),
+                updated_at: new Date().toISOString()
+            });
+        }
+        
+        console.log(`Updated shop notification ${notificationId}`);
+        
+        res.json({
+            success: true,
+            message: 'Notification updated successfully',
+            data: {
+                id: shopNotification.id,
+                message: shopNotification.message
+            }
+        });
+    } catch (error) {
+        console.error('Error updating shop notification:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update notification',
             error: error.message
         });
     }
@@ -2417,6 +2639,25 @@ app.delete('/api/shop/:shopId/notifications/:notificationId', async (req, res) =
                 // Don't fail the request, just log the error
             }
             
+            // Get the driver ID to broadcast to them
+            const { data: driverNotification, error: fetchError } = await supabase
+                .from('driver_notifications')
+                .select('driver_id')
+                .eq('id', notificationId)
+                .single();
+            
+            // Broadcast real-time update to the driver
+            if (!fetchError && driverNotification) {
+                broadcastNotificationUpdate(driverNotification.driver_id, 'driver', 'deleted', notificationId, {
+                    deleted: true
+                });
+            }
+            
+            // Broadcast real-time update to all connected shops
+            broadcastNotificationUpdate(parseInt(shopId).toString(), 'shop', 'deleted', notificationId, {
+                deleted: true
+            });
+            
             console.log(`Deleted driver notification ${notificationId}`);
             
             res.json({
@@ -2447,6 +2688,20 @@ app.delete('/api/shop/:shopId/notifications/:notificationId', async (req, res) =
         broadcastNotificationUpdate(parseInt(shopId).toString(), 'shop', 'deleted', notificationId, {
             deleted: true
         });
+        
+        // Also broadcast to the driver if this is a shop notification with original_notification_id
+        const { data: shopNotification, error: fetchError } = await supabase
+            .from('shop_notifications')
+            .select('original_notification_id, driver_id')
+            .eq('id', notificationId)
+            .single();
+        
+        if (!fetchError && shopNotification && shopNotification.original_notification_id) {
+            // Broadcast to the driver
+            broadcastNotificationUpdate(shopNotification.driver_id, 'driver', 'deleted', shopNotification.original_notification_id, {
+                deleted: true
+            });
+        }
         
         // Update notification count
         const { count, error: countError } = await supabase
@@ -2514,6 +2769,25 @@ app.delete('/api/driver/:driverId/notifications/:notificationId', async (req, re
         broadcastNotificationUpdate(driverId, 'driver', 'deleted', notificationId, {
             deleted: true
         });
+        
+        // Also broadcast to the shop that created the notification
+        if (deletedNotification.shop_id) {
+            // Broadcast to all connected shop clients for this shop
+            clients.forEach((client, ws) => {
+                if (ws.readyState === WebSocket.OPEN && 
+                    client.userType === 'shop' && 
+                    client.shopId === deletedNotification.shop_id) {
+                    ws.send(JSON.stringify({
+                        type: 'notification_update',
+                        action: 'deleted',
+                        notificationId: notificationId,
+                        data: {
+                            deleted: true
+                        }
+                    }));
+                }
+            });
+        }
         
         // Update notification count
         const { count, error: countError } = await supabase

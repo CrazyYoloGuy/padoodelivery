@@ -2170,6 +2170,19 @@ class ShopApp {
                     const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
                     this.filterNotifications(activeFilter);
                 }
+                
+                // Send WebSocket message to broadcast the deletion
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'notification_update',
+                        action: 'deleted',
+                        notificationId: notificationId,
+                        data: {
+                            deleted: true
+                        }
+                    }));
+                }
+                
                 this.showToast('Notification deleted successfully', 'success');
             } else {
                 throw new Error(result.message || 'Failed to delete notification');
@@ -2411,34 +2424,60 @@ class ShopApp {
     
     // Handle real-time notification update
     handleNotificationUpdate(data) {
+        console.log('🔄 Shop received notification update:', data);
         const { action, notificationId, data: updateData } = data;
-        const idx = this.notifications.findIndex(n => n.id === notificationId);
+        
+        // Handle different notification arrays
+        const updateNotificationInArray = (array) => {
+            const idx = array.findIndex(n => n.id === notificationId);
+            if (idx !== -1) {
+                if (action === 'confirmed') {
+                    array[idx] = {
+                        ...array[idx],
+                        status: 'confirmed',
+                        confirmed_at: updateData?.confirmed_at
+                    };
+                } else if (action === 'deleted') {
+                    array.splice(idx, 1);
+                } else if (action === 'edited') {
+                    array[idx] = {
+                        ...array[idx],
+                        ...updateData
+                    };
+                }
+                return true;
+            }
+            return false;
+        };
+        
+        // Update in notifications array
+        const notificationsUpdated = updateNotificationInArray(this.notifications);
+        
+        // Update in allNotifications array
+        const allNotificationsUpdated = this.allNotifications ? updateNotificationInArray(this.allNotifications) : false;
+        
+        // Show appropriate toast
         if (action === 'confirmed') {
-            if (idx !== -1) {
-                this.notifications[idx] = {
-                    ...this.notifications[idx],
-                    status: 'confirmed',
-                    confirmed_at: updateData?.confirmed_at
-                };
-                this.showToast('Notification confirmed', 'success');
-            }
+            this.showToast('✅ Driver confirmed your notification', 'success');
         } else if (action === 'deleted') {
-            if (idx !== -1) {
-                this.notifications.splice(idx, 1);
-                this.showToast('Notification deleted', 'info');
-            }
+            this.showToast('🗑️ Notification deleted', 'info');
         } else if (action === 'edited') {
-            if (idx !== -1) {
-                this.notifications[idx] = {
-                    ...this.notifications[idx],
-                    ...updateData
-                };
-                this.showToast('Notification updated', 'info');
-            }
+            this.showToast('✏️ Notification updated', 'info');
         }
-        if (this.currentPage === 'alerts' || this.currentPage === 'notifications') {
-            this.renderNotifications(this.notifications);
+        
+        // Update UI based on current page
+        if (this.currentPage === 'alerts') {
+            this.loadNotificationsPage();
+        } else if (this.currentPage === 'notifications') {
+            this.loadAllNotifications();
+        } else if (this.currentPage === 'profile') {
+            this.updateProfileNotificationsWidget();
         }
+        
+        // Update notification count
+        this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
+        
+        console.log(`🔄 Notification update processed: ${action} for ID ${notificationId}`);
     }
     
     // Handle notification deleted
@@ -2509,16 +2548,38 @@ class ShopApp {
 
     // Handle real-time notification
     handleRealtimeNotification(notification) {
-        // Add to notifications array
-        this.notifications.unshift(notification);
+        console.log('🔔 Shop received real-time notification:', notification);
+        
+        // Check if notification already exists (for updates)
+        const existingIndex = this.notifications.findIndex(n => n.id === notification.id);
+        if (existingIndex !== -1) {
+            // Update existing notification
+            this.notifications[existingIndex] = {
+                ...this.notifications[existingIndex],
+                ...notification
+            };
+            console.log('🔄 Updated existing notification');
+        } else {
+            // Add new notification
+            this.notifications.unshift(notification);
+            console.log('➕ Added new notification');
+        }
         
         // Update allNotifications array if it exists
         if (this.allNotifications) {
-            this.allNotifications.unshift(notification);
+            const allExistingIndex = this.allNotifications.findIndex(n => n.id === notification.id);
+            if (allExistingIndex !== -1) {
+                this.allNotifications[allExistingIndex] = {
+                    ...this.allNotifications[allExistingIndex],
+                    ...notification
+                };
+            } else {
+                this.allNotifications.unshift(notification);
+            }
         }
         
-        // Play notification sound
-        this.playNotificationSound();
+        // Play notification sound with strong alert
+        this.playNotificationSound(true);
         
         // Show browser notification if permitted
         this.showBrowserNotification(notification);
@@ -2534,7 +2595,11 @@ class ShopApp {
         }
         
         // Show toast notification
-        this.showToast(`Driver confirmed: ${notification.message}`, 'success');
+        const message = notification.message || 'Driver confirmed your notification';
+        this.showToast(`✅ ${message}`, 'success');
+        
+        // Update notification count
+        this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
     }
     
     // Add method to update profile notifications widget in real-time
@@ -3153,6 +3218,20 @@ class ShopApp {
                         const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
                         this.filterNotifications(activeFilter);
                     }
+                    
+                    // Send WebSocket message to broadcast the update
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'notification_update',
+                            action: 'edited',
+                            notificationId: notificationId,
+                            data: {
+                                message: newMessage,
+                                updated_at: new Date().toISOString()
+                            }
+                        }));
+                    }
+                    
                     this.showToast('Notification updated successfully', 'success');
                     modal.remove();
                 } else {
