@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const WebSocket = require('ws');
 const http = require('http');
+const webpush = require('web-push');
 
 // Load environment variables
 require('dotenv').config();
@@ -22,6 +23,15 @@ const wss = new WebSocket.Server({ server });
 
 // Store connected clients with their user info
 const clients = new Map();
+
+// Configure web-push for push notifications
+webpush.setVapidDetails(
+    'mailto:admin@padoodelivery.com',
+    'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I', // Public key (matches client)
+    'DcH8vC9j5KL2mN7p8QrT6uW1x3Z5bGf9hJ0k2M4n6P8q' // Private key (keep secret)
+);
+
+console.log('🔔 Web push notifications configured');
 
 // In-memory session store (in production, use Redis or database)
 const activeSessions = new Map(); // userId -> sessionData
@@ -1874,6 +1884,14 @@ app.post('/api/shop/:shopId/notify-driver/:driverId', async (req, res) => {
         
         broadcastToUser(driverId, 'driver', realtimeNotification);
         
+        // Send push notification to driver's mobile device
+        await sendPushNotification(driverId, 'driver', {
+            id: data.id,
+            title: `New order from ${shopData.shop_name}`,
+            message: data.message,
+            shop_name: shopData.shop_name
+        });
+        
         // Get updated notification count for driver
         const { count, error: countError } = await supabase
             .from('driver_notifications')
@@ -1985,6 +2003,14 @@ app.post('/api/shop/:shopId/notify-team', async (req, res) => {
             };
             
             broadcastToUser(notificationData.driver_id, 'driver', realtimeNotification);
+            
+            // Send push notification to each driver's mobile device
+            await sendPushNotification(notificationData.driver_id, 'driver', {
+                id: notificationData.id,
+                title: `Team notification from ${shopData.shop_name}`,
+                message: notificationData.message,
+                shop_name: shopData.shop_name
+            });
             
             // Update notification count for each driver
             const { count, error: countError } = await supabase
@@ -3751,6 +3777,175 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
         });
     }
 });
+
+// ============== PUSH NOTIFICATION ENDPOINTS ==============
+
+// POST /api/push/subscription - Save push subscription
+app.post('/api/push/subscription', async (req, res) => {
+    try {
+        const { subscription, userId, userType } = req.body;
+        
+        if (!subscription || !userId || !userType) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields'
+            });
+        }
+        
+        console.log(`💾 Saving push subscription for ${userType} ${userId}`);
+        
+        // Save or update subscription in database
+        const { data, error } = await supabase
+            .from('push_subscriptions')
+            .upsert({
+                user_id: userId,
+                user_type: userType,
+                endpoint: subscription.endpoint,
+                p256dh_key: subscription.keys.p256dh,
+                auth_key: subscription.keys.auth,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id,user_type'
+            })
+            .select('*')
+            .single();
+        
+        if (error) {
+            console.error('Error saving push subscription:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to save subscription'
+            });
+        }
+        
+        console.log('✅ Push subscription saved successfully');
+        
+        res.json({
+            success: true,
+            message: 'Push subscription saved successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error in push subscription endpoint:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// PUT /api/push/subscription - Update push subscription
+app.put('/api/push/subscription', async (req, res) => {
+    try {
+        const { subscription, oldEndpoint } = req.body;
+        
+        if (!subscription) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing subscription data'
+            });
+        }
+        
+        console.log('🔄 Updating push subscription');
+        
+        // Update subscription based on old endpoint
+        const { data, error } = await supabase
+            .from('push_subscriptions')
+            .update({
+                endpoint: subscription.endpoint,
+                p256dh_key: subscription.keys.p256dh,
+                auth_key: subscription.keys.auth,
+                updated_at: new Date().toISOString()
+            })
+            .eq('endpoint', oldEndpoint)
+            .select('*');
+        
+        if (error) {
+            console.error('Error updating push subscription:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to update subscription'
+            });
+        }
+        
+        console.log('✅ Push subscription updated successfully');
+        
+        res.json({
+            success: true,
+            message: 'Push subscription updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error in push subscription update endpoint:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Function to send push notification
+async function sendPushNotification(userId, userType, notificationData) {
+    try {
+        console.log(`📱 Sending push notification to ${userType} ${userId}`);
+        
+        // Get user's push subscription
+        const { data: subscriptions, error } = await supabase
+            .from('push_subscriptions')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('user_type', userType);
+        
+        if (error || !subscriptions || subscriptions.length === 0) {
+            console.log(`No push subscriptions found for ${userType} ${userId}`);
+            return;
+        }
+        
+        // Send to all subscriptions for this user
+        const sendPromises = subscriptions.map(async (sub) => {
+            try {
+                const pushSubscription = {
+                    endpoint: sub.endpoint,
+                    keys: {
+                        p256dh: sub.p256dh_key,
+                        auth: sub.auth_key
+                    }
+                };
+                
+                const payload = JSON.stringify({
+                    title: notificationData.title || 'Padoo Delivery',
+                    body: notificationData.message || 'You have a new notification',
+                    icon: '/icons/icon-192x192.png',
+                    badge: '/icons/plogo.png',
+                    tag: 'padoo-notification',
+                    url: '/app',
+                    notificationId: notificationData.id,
+                    data: notificationData
+                });
+                
+                await webpush.sendNotification(pushSubscription, payload);
+                console.log(`✅ Push notification sent successfully to ${userType} ${userId}`);
+                
+            } catch (pushError) {
+                console.error(`❌ Failed to send push notification to ${userType} ${userId}:`, pushError);
+                
+                // If subscription is invalid, remove it
+                if (pushError.statusCode === 410 || pushError.statusCode === 404) {
+                    console.log(`🗑️ Removing invalid subscription for ${userType} ${userId}`);
+                    await supabase
+                        .from('push_subscriptions')
+                        .delete()
+                        .eq('id', sub.id);
+                }
+            }
+        });
+        
+        await Promise.all(sendPromises);
+        
+    } catch (error) {
+        console.error('Error in sendPushNotification:', error);
+    }
+}
 
 // --- PATCH/PUT/DELETE endpoints for orders ---
 // After successful order update by shop, call broadcastOrderUpdateToDrivers(shopId, 'edit', order)

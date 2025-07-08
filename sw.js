@@ -196,55 +196,152 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
   
+  let notificationData = {};
+  
+  if (event.data) {
+    try {
+      notificationData = event.data.json();
+    } catch (e) {
+      notificationData = { body: event.data.text() };
+    }
+  }
+  
   const options = {
-    body: event.data ? event.data.text() : 'New notification from Padoo Delivery',
+    body: notificationData.body || 'New notification from Padoo Delivery',
     icon: '/icons/icon-192x192.png',
     badge: '/icons/plogo.png',
-    vibrate: [200, 100, 200],
+    image: notificationData.image || null,
+    tag: notificationData.tag || 'padoo-notification',
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
+    vibrate: [200, 100, 200, 100, 200],
     data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
+      url: notificationData.url || '/app',
+      notificationId: notificationData.notificationId || null,
+      clickAction: notificationData.clickAction || 'open_app',
+      ...notificationData.data
     },
     actions: [
       {
-        action: 'explore',
-        title: 'Open App',
+        action: 'open',
+        title: '📱 Open App',
         icon: '/icons/plogo.png'
       },
       {
         action: 'close',
-        title: 'Close',
+        title: '❌ Dismiss',
         icon: '/icons/plogo.png'
       }
     ]
   };
-  
+
   event.waitUntil(
-    self.registration.showNotification('Delivery App', options)
+    self.registration.showNotification(notificationData.title || 'Padoo Delivery', options)
+      .then(() => {
+        console.log('[SW] Push notification displayed successfully');
+      })
+      .catch(error => {
+        console.error('[SW] Error displaying push notification:', error);
+      })
   );
 });
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
-  console.log('[SW] Notification click received.');
+  console.log('[SW] Notification click received:', event.action);
   
   event.notification.close();
   
-  if (event.action === 'explore') {
-    // Open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
-  } else if (event.action === 'close') {
+  if (event.action === 'close') {
     // Just close the notification
-    console.log('[SW] Notification closed via action.');
-  } else {
-    // Default action - open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+    console.log('[SW] Notification dismissed by user');
+    return;
   }
+  
+  // Handle open action or notification click
+  const urlToOpen = event.notification.data?.url || '/app';
+  const notificationId = event.notification.data?.notificationId;
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clientList => {
+        // Check if app is already open
+        for (const client of clientList) {
+          if (client.url.includes('/app') || client.url.includes('/mainapp')) {
+            client.focus();
+            // Send message to mark notification as read if we have an ID
+            if (notificationId) {
+              client.postMessage({
+                type: 'notification_clicked',
+                notificationId: notificationId
+              });
+            }
+            return;
+          }
+        }
+        
+        // App not open, open new window
+        return clients.openWindow(urlToOpen);
+      })
+      .catch(error => {
+        console.error('[SW] Error handling notification click:', error);
+      })
+  );
 });
+
+// Handle push subscription change
+self.addEventListener('pushsubscriptionchange', (event) => {
+  console.log('[SW] Push subscription changed');
+  
+  event.waitUntil(
+    self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(getApplicationServerKey())
+    })
+    .then(subscription => {
+      console.log('[SW] New push subscription created');
+      
+      // Send new subscription to server
+      return fetch('/api/push/subscription', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subscription: subscription,
+          oldEndpoint: event.oldSubscription?.endpoint
+        })
+      });
+    })
+    .catch(error => {
+      console.error('[SW] Error handling push subscription change:', error);
+    })
+  );
+});
+
+// Helper function to convert VAPID key
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// Get application server key (VAPID public key)
+function getApplicationServerKey() {
+  // This should be your VAPID public key
+  // For demo purposes, using a placeholder - in production, get this from your server
+  return 'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I';
+}
 
 // Message handling for communication with main thread
 self.addEventListener('message', (event) => {

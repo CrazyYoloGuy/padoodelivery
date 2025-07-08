@@ -40,11 +40,8 @@ class DeliveryApp {
             return;
         }
         
-        // Prevent back button navigation to login page
-        window.history.replaceState(null, null, window.location.href);
-        window.addEventListener('popstate', () => {
-            window.history.pushState(null, null, window.location.href);
-        });
+        // Enhanced back button prevention for mobile apps
+        this.preventBackNavigation();
         
         // Set user data from authenticated session
         if (this.currentUser) {
@@ -66,8 +63,8 @@ class DeliveryApp {
         await this.loadSettingsData();
         await this.loadCategories();
         
-        // Request notification permission
-        this.requestNotificationPermission();
+        // Setup push notifications
+        await this.setupPushNotifications();
         
         // Navigate to home page
         this.navigateToPage('home');
@@ -5625,7 +5622,195 @@ class DeliveryApp {
         this.showModernNotificationPopup(notification);
     }
     
-    // Request notification permission
+    // Enhanced back navigation prevention for mobile apps
+    preventBackNavigation() {
+        // Clear any existing history entries that point to login
+        window.history.replaceState(null, null, window.location.href);
+        
+        // Add multiple entries to prevent back navigation
+        for (let i = 0; i < 10; i++) {
+            window.history.pushState(null, null, window.location.href);
+        }
+        
+        // Handle popstate events (back button presses)
+        window.addEventListener('popstate', (event) => {
+            // Prevent navigation and stay on current page
+            window.history.pushState(null, null, window.location.href);
+            
+            // Show warning to user about using logout instead
+            this.showToast('Please use the logout button to exit the app', 'warning');
+            
+            // Vibrate if supported (mobile devices)
+            if ('vibrate' in navigator) {
+                navigator.vibrate(100);
+            }
+        });
+        
+        // Prevent browser back/forward buttons on desktop
+        window.addEventListener('beforeunload', (event) => {
+            // This will show browser confirmation dialog
+            const message = 'Please use the logout button to exit the app safely.';
+            event.returnValue = message;
+            return message;
+        });
+        
+        // Additional mobile-specific prevention
+        if (window.DeviceMotionEvent || window.DeviceOrientationEvent) {
+            // Mobile device detected
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    // App became visible again, ensure we're still on the right page
+                    window.history.pushState(null, null, window.location.href);
+                }
+            });
+        }
+        
+        console.log('Enhanced back navigation prevention activated');
+    }
+
+    // Setup comprehensive push notification system
+    async setupPushNotifications() {
+        try {
+            // Check if browser supports notifications
+            if (!('Notification' in window)) {
+                console.warn('This browser does not support notifications');
+                return;
+            }
+            
+            // Check if service worker is supported
+            if (!('serviceWorker' in navigator)) {
+                console.warn('Service workers not supported');
+                return;
+            }
+            
+            // Request notification permission
+            let permission = Notification.permission;
+            
+            if (permission === 'default') {
+                // Show custom permission modal first
+                this.showNotificationPermissionModal();
+                return;
+            }
+            
+            if (permission === 'granted') {
+                console.log('Notification permission granted');
+                this.showToast('📱 Push notifications enabled! You\'ll receive updates even when the app is closed.', 'success');
+                
+                // Setup push subscription
+                await this.setupPushSubscription();
+                
+            } else if (permission === 'denied') {
+                console.warn('Notification permission denied');
+                this.showToast('Notifications are blocked. Please enable them in your browser settings to receive updates.', 'warning');
+            }
+            
+            // Listen for messages from service worker
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'notification_clicked') {
+                    this.handleNotificationClick(event.data.notificationId);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error setting up push notifications:', error);
+        }
+    }
+    
+    // Setup push subscription for mobile notifications
+    async setupPushSubscription() {
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            
+            // Check if we already have a subscription
+            let subscription = await registration.pushManager.getSubscription();
+            
+            if (!subscription) {
+                // Create new subscription
+                const applicationServerKey = this.getApplicationServerKey();
+                
+                subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: this.urlBase64ToUint8Array(applicationServerKey)
+                });
+                
+                console.log('Created new push subscription');
+            } else {
+                console.log('Using existing push subscription');
+            }
+            
+            // Send subscription to server
+            await this.sendSubscriptionToServer(subscription);
+            
+        } catch (error) {
+            console.error('Error setting up push subscription:', error);
+        }
+    }
+    
+    // Send subscription to server
+    async sendSubscriptionToServer(subscription) {
+        try {
+            const response = await fetch('/api/push/subscription', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.sessionToken}`
+                },
+                body: JSON.stringify({
+                    subscription: subscription,
+                    userId: this.userId,
+                    userType: 'driver'
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                console.log('Push subscription saved to server');
+            } else {
+                console.error('Failed to save push subscription:', result.message);
+            }
+            
+        } catch (error) {
+            console.error('Error sending subscription to server:', error);
+        }
+    }
+    
+    // Handle notification click from service worker
+    handleNotificationClick(notificationId) {
+        if (notificationId) {
+            // Navigate to notifications page and highlight the clicked notification
+            this.navigateToPage('notifications');
+            
+            // Mark notification as read
+            setTimeout(() => {
+                this.confirmNotification(notificationId);
+            }, 500);
+        }
+    }
+    
+    // Get application server key (VAPID public key)
+    getApplicationServerKey() {
+        // This should match the key in service worker
+        return 'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I';
+    }
+    
+    // Convert VAPID key to Uint8Array
+    urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    // Request notification permission (enhanced)
     async requestNotificationPermission() {
         if ('Notification' in window) {
             if (Notification.permission === 'default') {
@@ -5633,6 +5818,9 @@ class DeliveryApp {
                 this.showNotificationPermissionModal();
             } else if (Notification.permission === 'denied') {
                 this.showToast('Notifications are blocked. Please enable them in your browser settings to receive updates.', 'warning');
+            } else if (Notification.permission === 'granted') {
+                // Setup push subscription if not already done
+                await this.setupPushSubscription();
             }
         }
     }
@@ -5737,15 +5925,23 @@ class DeliveryApp {
         
         // Handle allow button
         const allowBtn = modal.querySelector('.permission-btn.allow');
-        allowBtn.addEventListener('click', () => {
-            Notification.requestPermission().then(permission => {
-            if (permission === 'granted') {
-                    this.showToast('🎉 Notifications enabled! You\'ll receive real-time delivery updates.', 'success');
+        allowBtn.addEventListener('click', async () => {
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    this.showToast('🎉 Push notifications enabled! You\'ll receive real-time delivery updates even when the app is closed.', 'success');
+                    
+                    // Setup push subscription after permission is granted
+                    await this.setupPushSubscription();
                 } else {
                     this.showToast('Notifications disabled. You can enable them in your browser settings.', 'warning');
                 }
                 modal.remove();
-            });
+            } catch (error) {
+                console.error('Error requesting notification permission:', error);
+                this.showToast('Error setting up notifications. Please try again.', 'error');
+                modal.remove();
+            }
         });
         
         // Handle deny button
