@@ -3,6 +3,7 @@ class Dashboard {
         this.currentSection = 'overview';
         this.users = [];
         this.shops = [];
+        this.categories = [];
         this.stats = {};
         this.filteredShops = [];
         this.shopsToShow = 4;
@@ -96,6 +97,7 @@ class Dashboard {
             overview: 'Dashboard Overview',
             users: 'Driver Management',
             shops: 'Shop Management',
+            categories: 'Category Management',
             'all-users': 'All Users'
         };
         document.getElementById('page-title').textContent = titles[section];
@@ -112,6 +114,8 @@ class Dashboard {
             this.applyShopFilter();
             const grid = document.getElementById('shops-grid');
             if (grid) grid.scrollTop = 0;
+        } else if (section === 'categories') {
+            this.loadCategories();
         } else if (section === 'all-users') {
             this.renderUsers();
         }
@@ -640,7 +644,7 @@ class Dashboard {
     }
     
     // Shop Management
-    openShopModal(shopOrId = null) {
+    async openShopModal(shopOrId = null) {
         try {
             let isEdit = false;
             let shop = null;
@@ -654,6 +658,11 @@ class Dashboard {
                 shopId = shopOrId;
                 const shopIdStr = String(shopId);
                 shop = this.shops.find(s => String(s.id) === shopIdStr);
+            }
+
+            // Load categories if not already loaded
+            if (!this.categories || this.categories.length === 0) {
+                await this.loadCategories();
             }
         // Generate a unique ID suffix for all form fields
         const uniqueId = Date.now();
@@ -739,7 +748,7 @@ class Dashboard {
                                     <textarea id="shop-address-${uniqueId}" placeholder="Enter shop address"
                                         style="background:#f8fafc; border-radius:10px; border:1.5px solid var(--border); font-size:15px; padding:12px 14px; margin-top:2px; transition:box-shadow 0.2s;">${shop ? shop.address || '' : ''}</textarea>
                         </div>
-                        <div class="form-group">
+                                                        <div class="form-group">
                                     <label for="shop-afm-${uniqueId}" style="font-weight:700; color:#222; display:flex; align-items:center; gap:8px;">
                                         <i class="fas fa-id-card" style="color:var(--primary-color);"></i> AFM (Tax ID)
                             </label>
@@ -747,6 +756,21 @@ class Dashboard {
                                            value="${shop ? shop.afm || '' : ''}"
                                            placeholder="Enter AFM (Tax ID)"
                                            style="background:#f8fafc; border-radius:10px; border:1.5px solid var(--border); font-size:15px; padding:12px 14px; margin-top:2px; transition:box-shadow 0.2s;">
+                                </div>
+                                <div class="form-group">
+                                    <label for="shop-category-${uniqueId}" style="font-weight:700; color:#222; display:flex; align-items:center; gap:8px;">
+                                        <i class="fas fa-th-large" style="color:var(--primary-color);"></i> Category *
+                                    </label>
+                                    <select id="shop-category-${uniqueId}" required
+                                        style="background:#f8fafc; border-radius:10px; border:1.5px solid var(--border); font-size:15px; padding:12px 14px; margin-top:2px; transition:box-shadow 0.2s;">
+                                        <option value="">Select a category</option>
+                                        ${this.categories.filter(cat => cat.is_active).map(category => `
+                                            <option value="${category.id}" ${shop && shop.category_id === category.id ? 'selected' : ''}>
+                                                ${category.name}
+                                            </option>
+                                        `).join('')}
+                                    </select>
+                                    <small style="color:#94a3b8;">Select the category that best describes this shop</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="shop-status-${uniqueId}" style="font-weight:700; color:#222; display:flex; align-items:center; gap:8px;">
@@ -906,10 +930,11 @@ class Dashboard {
             const phone = document.getElementById(`shop-phone-${uniqueId}`).value.trim();
             const address = document.getElementById(`shop-address-${uniqueId}`).value.trim();
             const afm = document.getElementById(`shop-afm-${uniqueId}`).value.trim();
+            const categoryId = document.getElementById(`shop-category-${uniqueId}`).value;
             const status = document.getElementById(`shop-status-${uniqueId}`).value;
             // Validate required fields
-            if (!shopName || !email || !password || !afm) {
-                this.showToast('Shop name, email, password, and AFM are required', 'error');
+            if (!shopName || !email || !password || !afm || !categoryId) {
+                this.showToast('Shop name, email, password, AFM, and category are required', 'error');
                 return;
             }
             if (password.length < 6) {
@@ -929,6 +954,7 @@ class Dashboard {
                 phone: phone,
                 address: address,
                 afm: afm,
+                category_id: parseInt(categoryId),
                 status: status
             };
             console.log('Creating shop with data:', { ...formData, password: '******' });
@@ -966,6 +992,7 @@ class Dashboard {
                 phone: document.getElementById(`shop-phone-${uniqueId}`).value,
                 address: document.getElementById(`shop-address-${uniqueId}`).value,
                 afm: document.getElementById(`shop-afm-${uniqueId}`).value,
+                category_id: parseInt(document.getElementById(`shop-category-${uniqueId}`).value),
                 status: document.getElementById(`shop-status-${uniqueId}`).value
             };
             const response = await fetch(`/api/admin/shop-accounts/${shopId}`, {
@@ -1423,6 +1450,435 @@ class Dashboard {
         overlay.dataset.uniqueId = uniqueId;
         requestAnimationFrame(() => {
             overlay.classList.add('active');
+        });
+    }
+
+    // Categories Management
+    async loadCategories() {
+        console.log('Loading categories...');
+        try {
+            const response = await fetch('/api/admin/categories');
+            if (response.ok) {
+                const result = await response.json();
+                this.categories = result.categories || [];
+                this.renderCategories();
+            } else {
+                console.error('Failed to load categories');
+                this.showToast('Failed to load categories', 'error');
+                this.renderCategoriesEmpty();
+            }
+        } catch (error) {
+            console.error('Error loading categories:', error);
+            this.showToast('Error loading categories', 'error');
+            this.renderCategoriesEmpty();
+        }
+    }
+
+    renderCategories() {
+        const container = document.getElementById('categories-grid');
+        if (!container) return;
+
+        if (!this.categories || this.categories.length === 0) {
+            this.renderCategoriesEmpty();
+            return;
+        }
+
+        container.innerHTML = this.categories.map(category => `
+            <div class="category-card" style="--category-color: ${category.color}">
+                <div class="category-status ${category.is_active ? 'active' : 'inactive'}">
+                    ${category.is_active ? 'Active' : 'Inactive'}
+                </div>
+                
+                <div class="category-header">
+                    <div class="category-icon" style="background: ${category.color}">
+                        <i class="${category.icon}"></i>
+                    </div>
+                    <div class="category-info">
+                        <h3>${category.name}</h3>
+                        <p>${category.description || 'No description'}</p>
+                    </div>
+                </div>
+                
+                <div class="category-stats">
+                    <div class="category-stat">
+                        <span class="stat-number">0</span>
+                        <span class="stat-label">Shops</span>
+                    </div>
+                    <div class="category-stat">
+                        <span class="stat-number">0</span>
+                        <span class="stat-label">Orders</span>
+                    </div>
+                </div>
+                
+                <div class="category-actions">
+                    <button class="category-action-btn edit" onclick="dashboard.editCategory(${category.id})">
+                        <i class="fas fa-edit"></i>
+                        Edit
+                    </button>
+                    <button class="category-action-btn delete" onclick="dashboard.deleteCategory(${category.id})">
+                        <i class="fas fa-trash"></i>
+                        Delete
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderCategoriesEmpty() {
+        const container = document.getElementById('categories-grid');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="categories-empty">
+                <i class="fas fa-th-large"></i>
+                <h3>No Categories Yet</h3>
+                <p>Create your first category to start organizing your menu items.</p>
+                <button class="btn primary" onclick="dashboard.openCategoryModal()">
+                    <i class="fas fa-plus"></i>
+                    Add First Category
+                </button>
+            </div>
+        `;
+    }
+
+    openCategoryModal(editCategory = null) {
+        const isEdit = editCategory !== null;
+        const modal = document.createElement('div');
+        modal.className = 'category-modal';
+        modal.id = 'category-modal';
+
+        const defaultColors = [
+            '#ff6b35', '#e74c3c', '#f39c12', '#e67e22', 
+            '#27ae60', '#2ecc71', '#3498db', '#2980b9',
+            '#9b59b6', '#8e44ad', '#e91e63', '#8b4513'
+        ];
+
+        const defaultIcons = [
+            'fas fa-pizza-slice', 'fas fa-hamburger', 'fas fa-coffee', 'fas fa-ice-cream',
+            'fas fa-utensils', 'fas fa-wine-glass', 'fas fa-bread-slice', 'fas fa-fish',
+            'fas fa-carrot', 'fas fa-apple-alt', 'fas fa-cookie-bite', 'fas fa-seedling',
+            'fas fa-lemon', 'fas fa-pepper-hot', 'fas fa-cheese', 'fas fa-drumstick-bite'
+        ];
+
+        modal.innerHTML = `
+            <div class="modal">
+                <div class="modal-header" style="padding: 24px 24px 0; display: flex; align-items: center; justify-content: space-between;">
+                    <h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #1f2937;">
+                        <i class="fas fa-th-large" style="color: var(--primary-color); margin-right: 8px;"></i>
+                        ${isEdit ? 'Edit Category' : 'Add New Category'}
+                    </h3>
+                    
+                    <button class="modal-close-x" style="
+                        position: absolute;
+                        top: 16px;
+                        right: 16px;
+                        width: 32px;
+                        height: 32px;
+                        background: #f3f4f6;
+                        border: none;
+                        border-radius: 50%;
+                        color: #6b7280;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                        font-weight: bold;
+                        z-index: 1;
+                    " title="Close">×</button>
+                </div>
+                
+                <form class="category-form" id="category-form">
+                    <div class="form-group">
+                        <label for="category-name">Category Name *</label>
+                        <input type="text" id="category-name" name="name" required 
+                               value="${isEdit ? editCategory.name : ''}"
+                               placeholder="e.g. Pizza, Burgers, Chinese">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="category-description">Description</label>
+                        <textarea id="category-description" name="description" rows="3"
+                                  placeholder="Brief description of this category">${isEdit ? (editCategory.description || '') : ''}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Color</label>
+                        <div class="color-picker-grid">
+                            ${defaultColors.map(color => `
+                                <div class="color-option ${isEdit && editCategory.color === color ? 'selected' : (!isEdit && color === '#ff6b35' ? 'selected' : '')}" 
+                                     style="background: ${color}" 
+                                     data-color="${color}"></div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Icon</label>
+                        <div class="icon-picker-grid">
+                            ${defaultIcons.map(icon => `
+                                <div class="icon-option ${isEdit && editCategory.icon === icon ? 'selected' : (!isEdit && icon === 'fas fa-utensils' ? 'selected' : '')}" 
+                                     data-icon="${icon}">
+                                    <i class="${icon}"></i>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="category-status">Status</label>
+                        <select id="category-status" name="is_active" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px;">
+                            <option value="true" ${isEdit && editCategory.is_active ? 'selected' : (!isEdit ? 'selected' : '')}>Active</option>
+                            <option value="false" ${isEdit && !editCategory.is_active ? 'selected' : ''}>Inactive</option>
+                        </select>
+                        <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
+                            Inactive categories won't be available for selection when creating shops
+                        </small>
+                    </div>
+                    
+                    <div class="form-group" style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button type="button" class="btn secondary modal-close" style="flex: 1;">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn primary" style="flex: 1;">
+                            <i class="fas fa-save"></i>
+                            ${isEdit ? 'Update Category' : 'Create Category'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        document.body.style.overflow = 'hidden';
+
+        // Show modal with animation
+        requestAnimationFrame(() => {
+            modal.classList.add('active');
+        });
+
+        // Bind color picker
+        modal.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', () => {
+                modal.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+            });
+        });
+
+        // Bind icon picker
+        modal.querySelectorAll('.icon-option').forEach(option => {
+            option.addEventListener('click', () => {
+                modal.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+            });
+        });
+
+        // Bind form submission
+        const form = modal.querySelector('#category-form');
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (isEdit) {
+                this.updateCategory(editCategory.id, modal);
+            } else {
+                this.createCategory(modal);
+            }
+        });
+
+        // Bind close events
+        const closeButtons = modal.querySelectorAll('.modal-close, .modal-close-x');
+        closeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+            });
+        });
+
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+            }
+        });
+
+        // Focus on name input
+        setTimeout(() => {
+            modal.querySelector('#category-name').focus();
+        }, 100);
+    }
+
+    async createCategory(modal) {
+        try {
+            const formData = new FormData(modal.querySelector('#category-form'));
+            const selectedColor = modal.querySelector('.color-option.selected')?.dataset.color || '#ff6b35';
+            const selectedIcon = modal.querySelector('.icon-option.selected')?.dataset.icon || 'fas fa-utensils';
+
+            const categoryData = {
+                name: formData.get('name'),
+                description: formData.get('description'),
+                color: selectedColor,
+                icon: selectedIcon,
+                is_active: formData.get('is_active') === 'true'
+            };
+
+            const response = await fetch('/api/admin/categories', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(categoryData)
+            });
+
+            if (response.ok) {
+                this.showToast('Category created successfully!', 'success');
+                modal.remove();
+                document.body.style.overflow = 'auto';
+                this.loadCategories(); // Reload categories
+            } else {
+                const error = await response.json();
+                this.showToast(error.error || 'Failed to create category', 'error');
+            }
+        } catch (error) {
+            console.error('Error creating category:', error);
+            this.showToast('Error creating category', 'error');
+        }
+    }
+
+    async updateCategory(categoryId, modal) {
+        try {
+            const formData = new FormData(modal.querySelector('#category-form'));
+            const selectedColor = modal.querySelector('.color-option.selected')?.dataset.color;
+            const selectedIcon = modal.querySelector('.icon-option.selected')?.dataset.icon;
+
+            const categoryData = {
+                name: formData.get('name'),
+                description: formData.get('description'),
+                color: selectedColor,
+                icon: selectedIcon,
+                is_active: formData.get('is_active') === 'true'
+            };
+
+            const response = await fetch(`/api/admin/categories/${categoryId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(categoryData)
+            });
+
+            if (response.ok) {
+                this.showToast('Category updated successfully!', 'success');
+                modal.remove();
+                document.body.style.overflow = 'auto';
+                this.loadCategories(); // Reload categories
+            } else {
+                const error = await response.json();
+                this.showToast(error.error || 'Failed to update category', 'error');
+            }
+        } catch (error) {
+            console.error('Error updating category:', error);
+            this.showToast('Error updating category', 'error');
+        }
+    }
+
+    editCategory(categoryId) {
+        const category = this.categories.find(c => c.id === categoryId);
+        if (category) {
+            this.openCategoryModal(category);
+        }
+    }
+
+    async deleteCategory(categoryId) {
+        const category = this.categories.find(c => c.id === categoryId);
+        if (!category) return;
+
+        // Show confirmation modal
+        const confirmed = await this.showConfirmDialog(
+            'Delete Category',
+            `Are you sure you want to delete "${category.name}"? This action cannot be undone.`,
+            'Delete',
+            'Cancel'
+        );
+
+        if (confirmed) {
+            try {
+                const response = await fetch(`/api/admin/categories/${categoryId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    this.showToast('Category deleted successfully!', 'success');
+                    this.loadCategories(); // Reload categories
+                } else {
+                    const error = await response.json();
+                    this.showToast(error.error || 'Failed to delete category', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting category:', error);
+                this.showToast('Error deleting category', 'error');
+            }
+        }
+    }
+
+    showConfirmDialog(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'category-modal';
+            modal.innerHTML = `
+                <div class="modal" style="max-width: 400px;">
+                    <div style="padding: 24px; text-align: center;">
+                        <div style="margin-bottom: 16px; color: #ef4444;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 32px;"></i>
+                        </div>
+                        <h3 style="margin: 0 0 12px 0; font-size: 18px; color: #1f2937;">${title}</h3>
+                        <p style="margin: 0 0 24px 0; color: #6b7280; line-height: 1.5;">${message}</p>
+                        <div style="display: flex; gap: 12px;">
+                            <button class="btn secondary confirm-cancel" style="flex: 1;">
+                                ${cancelText}
+                            </button>
+                            <button class="btn error confirm-delete" style="flex: 1; background: #ef4444;">
+                                ${confirmText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            document.body.style.overflow = 'hidden';
+
+            // Show modal with animation
+            requestAnimationFrame(() => {
+                modal.classList.add('active');
+            });
+
+            // Handle clicks
+            const cancelBtn = modal.querySelector('.confirm-cancel');
+            const confirmBtn = modal.querySelector('.confirm-delete');
+
+            cancelBtn.addEventListener('click', () => {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+                resolve(false);
+            });
+            
+            confirmBtn.addEventListener('click', () => {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+                resolve(true);
+            });
+
+            // Close on background click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                    document.body.style.overflow = 'auto';
+                    resolve(false);
+                }
+            });
         });
     }
 }

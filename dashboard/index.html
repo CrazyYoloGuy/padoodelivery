@@ -83,6 +83,10 @@
                         <i class="fas fa-store"></i>
                         <span>Shops</span>
                     </li>
+                    <li class="nav-item" data-section="categories">
+                        <i class="fas fa-th-large"></i>
+                        <span>Categories</span>
+                    </li>
                 </ul>
             </nav>
         </aside>
@@ -222,6 +226,29 @@
                 
                 <div class="shop-cards-grid" id="shops-grid">
                     <!-- Shop cards will be populated here -->
+                </div>
+            </section>
+
+            <!-- Categories Section -->
+            <section id="categories-section" class="content-section">
+                <div class="section-header">
+                    <h2>Category Management</h2>
+                    <div class="search-filter">
+                        <input type="text" id="category-search" placeholder="Search categories..." class="search-input">
+                        <select id="category-filter" class="filter-select">
+                            <option value="all">All Categories</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                        <button class="btn primary" onclick="dashboard.openCategoryModal()">
+                            <i class="fas fa-plus"></i>
+                            Add Category
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="categories-grid" id="categories-grid">
+                    <!-- Categories will be populated here -->
                 </div>
             </section>
         </main>

@@ -12,6 +12,7 @@ class ShopApp {
         this.audioContext = null;
         this.notificationAudio = null;
         this.isAudioEnabled = localStorage.getItem('notificationSound') !== 'false';
+        this.soundVolume = parseFloat(localStorage.getItem('soundVolume')) || 0.5; // Default 50% volume
         this.userId = localStorage.getItem('userId');
         this.shopId = localStorage.getItem('shopId');
         
@@ -23,6 +24,9 @@ class ShopApp {
         
         this.driverSearchCache = {};
         this.driverSearchDebounce = null;
+        
+        // Real-time timestamp updates
+        this.timestampUpdateInterval = null;
         
         this.init();
     }
@@ -60,6 +64,11 @@ class ShopApp {
         
         // Navigate to alerts page
         this.navigateToPage('alerts');
+        
+        // Add cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            this.stopTimestampUpdates();
+        });
         
         console.log('Shop app initialized successfully');
     }
@@ -347,6 +356,7 @@ class ShopApp {
                 if (sessionData.shop && sessionData.sessionToken) {
                     this.currentShop = sessionData.shop;
                     this.sessionToken = sessionData.sessionToken;
+                    this.shopId = this.currentShop.id; // Set shopId from currentShop
                     console.log('✅ Shop authenticated:', this.currentShop.shop_name || this.currentShop.email);
                     console.log('Shop ID:', this.currentShop.id);
                     return true;
@@ -365,6 +375,7 @@ class ShopApp {
             try {
                 this.currentShop = JSON.parse(storedShop);
                 this.sessionToken = storedSession;
+                this.shopId = this.currentShop.id; // Set shopId from currentShop
                 console.log('✅ Shop authenticated (legacy):', this.currentShop.shop_name);
                 console.log('Shop ID (legacy):', this.currentShop.id);
                 return true;
@@ -487,23 +498,29 @@ class ShopApp {
         // Handle page-specific logic with optimized loading
         switch(page) {
             case 'dashboard':
+                this.stopTimestampUpdates();
                 this.loadDashboardData();
                 break;
             case 'orders':
+                this.stopTimestampUpdates();
                 this.loadOrdersData();
                 break;
             case 'alerts':
+                this.stopTimestampUpdates();
                 this.loadNotifications(); // This will call loadDeliveryTeamFast
                 break;
             case 'notifications':
                 this.loadNotificationsPage();
+                // Timestamp updates are already started in loadNotificationsPage()
                 break;
             case 'settings':
+                this.stopTimestampUpdates();
                 this.loadSettingsPage();
                 // Preload team members for settings page too
                 this.loadSelectedDriversOptimized();
                 break;
             case 'profile':
+                this.stopTimestampUpdates();
                 this.loadProfileData();
                 break;
         }
@@ -646,11 +663,12 @@ class ShopApp {
             weekday: 'long', 
             year: 'numeric', 
             month: 'long', 
-            day: 'numeric' 
+            day: 'numeric',
+            timeZone: 'Europe/Athens'
         };
         const currentDateElement = document.getElementById('current-date');
         if (currentDateElement) {
-            currentDateElement.textContent = now.toLocaleDateString('en-US', options);
+            currentDateElement.textContent = now.toLocaleDateString('el-GR', options);
         }
     }
     
@@ -687,6 +705,9 @@ class ShopApp {
             this.ws = null;
         }
         
+        // Stop timestamp updates
+        this.stopTimestampUpdates();
+        
         // Show logout message
         this.showToast('Logged out successfully', 'success');
         
@@ -710,32 +731,112 @@ class ShopApp {
     }
     
     showToast(message, type = 'success') {
-        const container = document.getElementById('toast-container');
-        if (!container) return;
-
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        // Use the new modern notification style for all toasts
+        this.showModernToast(message, type);
+    }
+    
+    // Modern toast notification (brief style for all messages)
+    showModernToast(message, type = 'success') {
+        // Prevent duplicate notifications
+        const existingNotification = document.querySelector('.modern-toast-popup');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
         
-        const icon = type === 'success' ? 'fas fa-check-circle' : 
-                     type === 'error' ? 'fas fa-exclamation-circle' : 
-                     type === 'warning' ? 'fas fa-exclamation-triangle' : 
-                     'fas fa-info-circle';
+        // Determine colors and icons based on type
+        let accentColor, iconClass;
+        
+        switch (type) {
+            case 'success':
+                accentColor = '#10b981';
+                iconClass = 'fas fa-check-circle';
+                break;
+            case 'error':
+                accentColor = '#ef4444';
+                iconClass = 'fas fa-exclamation-circle';
+                break;
+            case 'warning':
+                accentColor = '#f59e0b';
+                iconClass = 'fas fa-exclamation-triangle';
+                break;
+            default: // info
+                accentColor = '#3b82f6';
+                iconClass = 'fas fa-info-circle';
+        }
+        
+        const toast = document.createElement('div');
+        toast.className = 'modern-toast-popup';
+        toast.style.cssText = `
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            z-index: 10000;
+            max-width: 320px;
+            margin: 0 auto;
+            transform: translateY(-80px) scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        `;
         
         toast.innerHTML = `
-            <div class="toast-content">
-                <i class="${icon}"></i>
-                <span>${message}</span>
+            <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; background: ${accentColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="${iconClass}" style="font-size: 14px; color: white;"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 500; font-size: 13px; color: #1f2937; line-height: 1.3;">
+                        ${message}
+                    </div>
+                </div>
+                <button class="toast-close-btn" style="background: none; border: none; color: #9ca3af; font-size: 14px; cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
         `;
-
-        container.appendChild(toast);
-
-        // Remove toast after 4 seconds
+        
+        document.body.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+            toast.style.transform = 'translateY(0) scale(1)';
+            toast.style.opacity = '1';
+        }, 50);
+        
+        // Handle close button
+        const closeBtn = toast.querySelector('.toast-close-btn');
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.color = '#374151';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.color = '#9ca3af';
+        });
+        closeBtn.addEventListener('click', () => {
+            this.closeModernToast(toast);
+        });
+        
+        // Auto remove after 3 seconds (brief for status messages)
+        setTimeout(() => {
+            if (toast.parentNode) {
+                this.closeModernToast(toast);
+            }
+        }, 3000);
+    }
+    
+    // Helper function to close modern toast with animation
+    closeModernToast(toast) {
+        toast.style.transform = 'translateY(-80px) scale(0.9)';
+        toast.style.opacity = '0';
         setTimeout(() => {
             if (toast.parentNode) {
                 toast.parentNode.removeChild(toast);
             }
-        }, 4000);
+        }, 300);
     }
 
     // Update loadSettingsPage to remove Your Delivery Team section but keep driver management
@@ -1244,10 +1345,17 @@ class ShopApp {
             });
             
             sendButton.addEventListener('click', async () => {
+                // Disable button immediately to prevent duplicates
+                sendButton.disabled = true;
+                sendButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                
                 // Get message from textarea
                 const message = document.getElementById('driver-notification-message').value.trim();
                 if (!message) {
                     this.showToast('Please enter a message', 'error');
+                    // Re-enable button
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
                     return;
                 }
                 
@@ -1256,6 +1364,9 @@ class ShopApp {
                 
                 if (!shopId) {
                     this.showToast('Shop ID not available', 'error');
+                    // Re-enable button
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
                     return;
                 }
                 
@@ -1272,6 +1383,8 @@ class ShopApp {
                     const result = await response.json();
                     
                     if (result.success) {
+                        // Play confirmation sound for successful notification send
+                        this.playConfirmationSound();
                         this.showToast(result.message, 'success');
                         modal.remove();
                     } else {
@@ -1280,6 +1393,9 @@ class ShopApp {
                 } catch (error) {
                     console.error('Error sending notification:', error);
                     this.showToast('Failed to send notification', 'error');
+                    // Re-enable button on error
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
                 }
             });
             
@@ -1336,10 +1452,17 @@ class ShopApp {
             });
             
             sendButton.addEventListener('click', async () => {
+                // Disable button immediately to prevent duplicates
+                sendButton.disabled = true;
+                sendButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                
                 // Get message from textarea
                 const message = document.getElementById('broadcast-message').value.trim();
                 if (!message) {
                     this.showToast('Please enter a message', 'error');
+                    // Re-enable button
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send to All';
                     return;
                 }
                 
@@ -1348,6 +1471,9 @@ class ShopApp {
                 
                 if (!shopId) {
                     this.showToast('Shop ID not available', 'error');
+                    // Re-enable button
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send to All';
                     return;
                 }
                 
@@ -1364,6 +1490,8 @@ class ShopApp {
                     const result = await response.json();
                     
                     if (result.success) {
+                        // Play confirmation sound for successful broadcast send
+                        this.playConfirmationSound();
                         this.showToast(result.message, 'success');
                         modal.remove();
                     } else {
@@ -1372,6 +1500,9 @@ class ShopApp {
                 } catch (error) {
                     console.error('Error sending team notification:', error);
                     this.showToast('Failed to send team notification', 'error');
+                    // Re-enable button on error
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = '<i class="fas fa-paper-plane"></i> Send to All';
                 }
             });
             
@@ -1387,60 +1518,119 @@ class ShopApp {
 
     formatDate(dateString) {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { 
+        return date.toLocaleDateString('el-GR', { 
             year: 'numeric', 
             month: 'short', 
-            day: 'numeric' 
+            day: 'numeric',
+            timeZone: 'Europe/Athens'
         });
     }
 
     timeAgo(date) {
+        // Simple, reliable Greek time display
+        const notificationDate = new Date(date);
         const now = new Date();
-        const diffInSeconds = Math.floor((now - date) / 1000);
-        const diffInMinutes = Math.floor(diffInSeconds / 60);
-        const diffInHours = Math.floor(diffInMinutes / 60);
-        const diffInDays = Math.floor(diffInHours / 24);
+        const diffInSeconds = Math.floor((now - notificationDate) / 1000);
         
-        // Less than 1 minute
-        if (diffInSeconds < 60) {
-            return 'Just now';
+        // For very recent notifications (less than 30 seconds), show "Τώρα"
+        if (diffInSeconds < 30) {
+            return 'Τώρα';
         }
         
-        // Less than 1 hour
-        if (diffInMinutes < 60) {
-            return `${diffInMinutes}m ago`;
-        }
+        // Show Greek time with proper formatting based on age
+        const greekFormatter = new Intl.DateTimeFormat('el-GR', {
+            timeZone: 'Europe/Athens'
+        });
         
-        // Less than 24 hours
-        if (diffInHours < 24) {
-            return `${diffInHours}h ago`;
-        }
+        const notificationInGreece = greekFormatter.format(notificationDate);
+        const nowInGreece = greekFormatter.format(now);
         
-        // Less than 7 days
-        if (diffInDays < 7) {
-            return `${diffInDays}d ago`;
-        }
-        
-        // More than 7 days - show actual date and time
-        const today = new Date();
-        
-        // Check if it's from this year
-        if (date.getFullYear() === today.getFullYear()) {
-            // Same year - show month, day, and time
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
+        // Check if it's today in Greek timezone
+        if (notificationInGreece === nowInGreece) {
+            return new Intl.DateTimeFormat('el-GR', {
                 hour: '2-digit',
-                minute: '2-digit'
-            });
-        } else {
-            // Different year - show full date
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+                minute: '2-digit',
+                timeZone: 'Europe/Athens'
+            }).format(notificationDate);
         }
+        
+        // For yesterday
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayInGreece = greekFormatter.format(yesterday);
+        
+        if (notificationInGreece === yesterdayInGreece) {
+            const timeStr = new Intl.DateTimeFormat('el-GR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Athens'
+            }).format(notificationDate);
+            return `Χθες ${timeStr}`;
+        }
+        
+        // For older notifications, show date and time in Greek
+        return new Intl.DateTimeFormat('el-GR', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Europe/Athens'
+        }).format(notificationDate);
+    }
+
+    // Real-time timestamp update methods
+    startTimestampUpdates() {
+        // Clear any existing interval
+        this.stopTimestampUpdates();
+        
+        // Update timestamps every 30 seconds
+        this.timestampUpdateInterval = setInterval(() => {
+            this.updateAllTimestamps();
+        }, 30000);
+        
+        console.log('✅ Started real-time timestamp updates');
+    }
+    
+    stopTimestampUpdates() {
+        if (this.timestampUpdateInterval) {
+            clearInterval(this.timestampUpdateInterval);
+            this.timestampUpdateInterval = null;
+            console.log('⏹️ Stopped real-time timestamp updates');
+        }
+    }
+    
+    updateAllTimestamps() {
+        // Update timestamps in notification cards
+        const timestampElements = document.querySelectorAll('.notification-time-simple, .notification-timestamp, .notification-time-widget, .time-mini');
+        
+        timestampElements.forEach(element => {
+            const notificationCard = element.closest('[data-created-at]');
+            if (notificationCard) {
+                const createdAt = notificationCard.getAttribute('data-created-at');
+                if (createdAt) {
+                    const newTime = this.timeAgo(new Date(createdAt));
+                    if (element.textContent !== newTime) {
+                        element.textContent = newTime;
+                    }
+                }
+            }
+        });
+        
+        // Update timestamps in team member cards (join dates)
+        const joinDateElements = document.querySelectorAll('.join-date');
+        joinDateElements.forEach(element => {
+            const teamCard = element.closest('[data-created-at]');
+            if (teamCard) {
+                const createdAt = teamCard.getAttribute('data-created-at');
+                if (createdAt) {
+                    const newTime = this.formatDate(createdAt);
+                    const timeSpan = element.querySelector('span:last-child');
+                    if (timeSpan && timeSpan.textContent !== newTime) {
+                        timeSpan.textContent = newTime;
+                    }
+                }
+            }
+        });
     }
 
     // Add method to load delivery team on alerts page
@@ -1943,6 +2133,9 @@ class ShopApp {
         // Bind filter events
         this.bindNotificationsPageEvents();
         
+        // Start real-time timestamp updates for notifications page
+        this.startTimestampUpdates();
+        
         // Load all notifications
         this.loadAllNotifications();
     }
@@ -1986,6 +2179,8 @@ class ShopApp {
             
             if (result.success) {
                 this.allNotifications = result.notifications || [];
+                // Keep main notifications array in sync for live updates
+                this.notifications = [...this.allNotifications];
                 console.log('Loaded notifications:', this.allNotifications);
                 console.log('First notification structure:', this.allNotifications[0]);
                 
@@ -2048,9 +2243,15 @@ class ShopApp {
                 const status = notification.status || 'pending';
                 const driverEmail = notification.driver_email || notification.email || 'Unknown Driver';
                 const message = notification.message || 'No message available';
-                const createdAt = notification.created_at || new Date().toISOString();
+                // Check if this is a very recent notification (less than 2 minutes old)
+                const notificationTime = new Date(notification.created_at || new Date());
+                const now = new Date();
+                const diffInSeconds = Math.floor((now - notificationTime) / 1000);
+                
+                // If notification is very recent (likely just received), use current timestamp for display
+                const createdAt = diffInSeconds < 120 ? new Date().toISOString() : (notification.created_at || new Date().toISOString());
                 return `
-                    <div class="notification-card simple" data-id="${notificationId}">
+                    <div class="notification-card simple" data-id="${notificationId}" data-created-at="${createdAt}">
                         <div class="notification-header-simple">
                             <div class="notification-status-badge ${status}">
                                 <i class="fas ${status === 'pending' ? 'fa-clock' : 'fa-check'}"></i>
@@ -2183,6 +2384,9 @@ class ShopApp {
                     }));
                 }
                 
+                // Play warning sound for deletion
+                this.playWarningSound();
+                
                 this.showToast('Notification deleted successfully', 'success');
             } else {
                 throw new Error(result.message || 'Failed to delete notification');
@@ -2258,7 +2462,10 @@ class ShopApp {
 
     // Initialize WebSocket and audio
     connectWebSocket() {
-        if (!this.shopId) {
+        // Use shopId or fallback to currentShop.id
+        const shopId = this.shopId || this.currentShop?.id;
+        
+        if (!shopId) {
             console.warn('⚠️ No shop ID found, cannot connect to WebSocket');
             return;
         }
@@ -2268,18 +2475,26 @@ class ShopApp {
             const wsUrl = `${protocol}//${window.location.host}`;
             
             console.log('🔌 Connecting to WebSocket:', wsUrl);
+            console.log('🆔 Using Shop ID:', shopId);
             
             this.ws = new WebSocket(wsUrl);
             
             this.ws.onopen = () => {
                 console.log('✅ WebSocket connected');
                 
+                // Reset reconnection attempts on successful connection
+                this.reconnectAttempts = 0;
+                if (this.reconnectTimeout) {
+                    clearTimeout(this.reconnectTimeout);
+                    this.reconnectTimeout = null;
+                }
+                
                 // Authenticate with server
                 this.ws.send(JSON.stringify({
                     type: 'authenticate',
-                    userId: this.shopId,
+                    userId: shopId,
                     userType: 'shop',
-                    shopId: this.shopId
+                    shopId: shopId
                 }));
             };
             
@@ -2292,14 +2507,28 @@ class ShopApp {
                 }
             };
             
-            this.ws.onclose = () => {
-                console.log('🔌 WebSocket disconnected');
-                // Attempt to reconnect after 5 seconds
-                setTimeout(() => {
-                    if (this.shopId) {
+            this.ws.onclose = (event) => {
+                console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+                
+                // Clear heartbeat interval
+                if (this.sessionHeartbeatInterval) {
+                    clearInterval(this.sessionHeartbeatInterval);
+                    this.sessionHeartbeatInterval = null;
+                }
+                
+                // Implement exponential backoff for reconnection
+                if (!this.reconnectAttempts) this.reconnectAttempts = 0;
+                const backoffTime = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Max 30 seconds
+                
+                console.log(`🔄 Attempting reconnection in ${backoffTime}ms (attempt ${this.reconnectAttempts + 1})`);
+                
+                this.reconnectTimeout = setTimeout(() => {
+                    const currentShopId = this.shopId || this.currentShop?.id;
+                    if (currentShopId) {
+                        this.reconnectAttempts++;
                         this.connectWebSocket();
                     }
-                }, 5000);
+                }, backoffTime);
             };
             
             this.ws.onerror = (error) => {
@@ -2311,7 +2540,7 @@ class ShopApp {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
                         type: 'session_heartbeat',
-                        userId: this.shopId
+                        userId: shopId
                     }));
                 }
             }, 30000);
@@ -2411,14 +2640,95 @@ class ShopApp {
         }
     }
 
-    // Play notification sound
-    playNotificationSound() {
-        if (this.notificationAudio && this.isAudioEnabled) {
-            try {
+    // Enhanced notification sound system
+    async playNotificationSound(strong = false) {
+        if (!this.isAudioEnabled) return;
+        
+        try {
+            const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            if (strong) {
+                // Melodic chime sequence for important notifications (C5, E5, G5)
+                const notes = [523.25, 659.25, 783.99];
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.15);
+                                         gain.gain.setValueAtTime(0.3 * this.soundVolume, now + i * 0.15);
+                     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15 + i * 0.15);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + i * 0.15);
+                    osc.stop(now + 0.15 + i * 0.15);
+                });
+            } else if (this.notificationAudio) {
+                // Regular notification sound
                 this.notificationAudio();
-            } catch (error) {
-                console.warn('⚠️ Could not play notification sound:', error);
             }
+            
+            console.log(`🔊 Played ${strong ? 'strong' : 'regular'} notification sound`);
+        } catch (error) {
+            console.warn('⚠️ Could not play notification sound:', error);
+        }
+    }
+
+    // Play confirmation sound for successful actions
+    async playConfirmationSound() {
+        if (!this.isAudioEnabled) return;
+        
+        try {
+            const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Success chime: C5, G5, C6 (major chord progression)
+            const confirmationNotes = [523.25, 783.99, 1046.50];
+            confirmationNotes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + i * 0.1);
+                                 gain.gain.setValueAtTime(0.25 * this.soundVolume, now + i * 0.1);
+                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2 + i * 0.1);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.1);
+                osc.stop(now + 0.2 + i * 0.1);
+            });
+            
+            console.log('🎵 Played confirmation sound');
+        } catch (error) {
+            console.warn('⚠️ Could not play confirmation sound:', error);
+        }
+    }
+
+    // Play delete/warning sound
+    async playWarningSound() {
+        if (!this.isAudioEnabled) return;
+        
+        try {
+            const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Warning tone: descending notes (G5, E5, C5)
+            const warningNotes = [783.99, 659.25, 523.25];
+            warningNotes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                                 gain.gain.setValueAtTime(0.2 * this.soundVolume, now + i * 0.12);
+                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15 + i * 0.12);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.12);
+                osc.stop(now + 0.15 + i * 0.12);
+            });
+            
+            console.log('⚠️ Played warning sound');
+        } catch (error) {
+            console.warn('⚠️ Could not play warning sound:', error);
         }
     }
     
@@ -2432,14 +2742,40 @@ class ShopApp {
             const idx = array.findIndex(n => n.id === notificationId);
             if (idx !== -1) {
                 if (action === 'confirmed') {
+                    // Update the array first
                     array[idx] = {
                         ...array[idx],
                         status: 'confirmed',
                         confirmed_at: updateData?.confirmed_at
                     };
+                    // Play confirmation sound and show browser notification
+                    this.playConfirmationSound();
+                    this.showBrowserNotification({
+                        ...array[idx],
+                        message: array[idx].message || 'A delivery was confirmed',
+                        confirmed_at: updateData?.confirmed_at,
+                        action: 'confirmed'
+                    });
+                    // Log confirmation with shop info (robust)
+                    const shopInfo = array[idx].shop_name || array[idx].shop || array[idx].shop_email || array[idx].shopId || array[idx].shop_id || 'Unknown Shop';
+                    console.log(`✅ Order confirmed! Notification ID: ${notificationId}, Shop: ${shopInfo}`);
                 } else if (action === 'deleted') {
+                    // Play warning sound and show browser notification for delete
+                    this.playWarningSound();
+                    this.showBrowserNotification({
+                        ...array[idx],
+                        message: array[idx].message || 'A notification was deleted',
+                        action: 'deleted'
+                    });
                     array.splice(idx, 1);
                 } else if (action === 'edited') {
+                    // Play regular notification sound and show browser notification for edit
+                    this.playNotificationSound(false);
+                    this.showBrowserNotification({
+                        ...array[idx],
+                        ...updateData,
+                        action: 'edited'
+                    });
                     array[idx] = {
                         ...array[idx],
                         ...updateData
@@ -2455,23 +2791,52 @@ class ShopApp {
         
         // Update in allNotifications array
         const allNotificationsUpdated = this.allNotifications ? updateNotificationInArray(this.allNotifications) : false;
-        
-        // Show appropriate toast
-        if (action === 'confirmed') {
-            this.showToast('✅ Driver confirmed your notification', 'success');
-        } else if (action === 'deleted') {
+
+        // Show appropriate toast only for non-confirmation actions
+        if (action === 'deleted') {
             this.showToast('🗑️ Notification deleted', 'info');
         } else if (action === 'edited') {
             this.showToast('✏️ Notification updated', 'info');
         }
-        
-        // Update UI based on current page
-        if (this.currentPage === 'alerts') {
-            this.loadNotificationsPage();
-        } else if (this.currentPage === 'notifications') {
-            this.loadAllNotifications();
-        } else if (this.currentPage === 'profile') {
-            this.updateProfileNotificationsWidget();
+
+        // If neither array was updated, force reload from server and handle updates
+        if (!notificationsUpdated && !allNotificationsUpdated) {
+            console.log('🔄 Notification not found in arrays, forcing reload from server...');
+            
+            // Play appropriate sound for the action
+            if (action === 'confirmed') {
+                this.playConfirmationSound();
+                console.log(`✅ Order confirmed! Notification ID: ${notificationId}, Shop: Unknown (not in array)`);
+            } else if (action === 'deleted') {
+                this.playWarningSound();
+            } else if (action === 'edited') {
+                this.playNotificationSound(false);
+            }
+            
+            // Force reload and update UI based on current page
+            if (this.currentPage === 'notifications') {
+                this.loadAllNotifications().then(() => {
+                    // After reload, update stats and re-render with current filter
+                    this.updateNotificationsStats();
+                    const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+                    this.filterNotifications(activeFilter);
+                });
+            } else if (this.currentPage === 'alerts') {
+                this.loadNotificationsPage();
+            } else if (this.currentPage === 'profile') {
+                this.updateProfileNotificationsWidget();
+            }
+        } else {
+            // Arrays were updated, just refresh the UI
+            if (this.currentPage === 'notifications') {
+                this.updateNotificationsStats();
+                const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+                this.filterNotifications(activeFilter);
+            } else if (this.currentPage === 'alerts') {
+                this.loadNotificationsPage();
+            } else if (this.currentPage === 'profile') {
+                this.updateProfileNotificationsWidget();
+            }
         }
         
         // Update notification count
@@ -2545,7 +2910,7 @@ class ShopApp {
         
         this.showToast('Notification updated', 'info');
     }
-
+    
     // Handle real-time notification
     handleRealtimeNotification(notification) {
         console.log('🔔 Shop received real-time notification:', notification);
@@ -2563,6 +2928,10 @@ class ShopApp {
             // Add new notification
             this.notifications.unshift(notification);
             console.log('➕ Added new notification');
+            // Play strong notification sound for new notifications (awaited)
+            if (typeof this.playNotificationSound === 'function') {
+                Promise.resolve(this.playNotificationSound(true));
+            }
         }
         
         // Update allNotifications array if it exists
@@ -2578,25 +2947,23 @@ class ShopApp {
             }
         }
         
-        // Play notification sound with strong alert
-        this.playNotificationSound(true);
-        
-        // Show browser notification if permitted
+        // Show single modern notification popup (no duplicates)
         this.showBrowserNotification(notification);
         
         // Update UI based on current page
         if (this.currentPage === 'alerts') {
-            this.loadNotificationsPage();
+            this.loadNotifications();
         } else if (this.currentPage === 'notifications') {
+            // Force refresh the notifications page with updated data
             this.loadAllNotifications();
+            // Ensure timestamp updates are running
+            if (!this.timestampUpdateInterval) {
+                this.startTimestampUpdates();
+            }
         } else if (this.currentPage === 'profile') {
             // Update the profile notifications widget in real-time
             this.updateProfileNotificationsWidget();
         }
-        
-        // Show toast notification
-        const message = notification.message || 'Driver confirmed your notification';
-        this.showToast(`✅ ${message}`, 'success');
         
         // Update notification count
         this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
@@ -2814,101 +3181,83 @@ class ShopApp {
             denyBtn.style.boxShadow = 'none';
         });
     }
-
-    // Show browser notification
+    
+    // Show modern custom notification (replaces browser notifications)
     showBrowserNotification(notification) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-            // Create enhanced notification with better styling
-            const browserNotification = new Notification('✅ Driver Confirmed', {
-                body: `${notification.driver_email || 'Driver'}\n${notification.message}`,
-                icon: '/icons/icon-192x192.png',
-                badge: '/icons/icon-192x192.png',
-                tag: 'shop-notification',
-                requireInteraction: false,
-                silent: false, // Allow system sound
-                vibrate: [200, 100, 200], // Vibration pattern
-                data: {
-                    notificationId: notification.id,
-                    driverEmail: notification.driver_email,
-                    type: 'driver_confirmation'
-                }
-            });
-            
-            // Handle notification click
-            browserNotification.onclick = () => {
-                window.focus();
-                this.navigateToPage('alerts');
-                browserNotification.close();
-                
-                // Highlight the specific notification
-                setTimeout(() => {
-                    const notificationElement = document.querySelector(`[data-notification-id="${notification.id}"]`);
-                    if (notificationElement) {
-                        notificationElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        notificationElement.style.animation = 'highlight-notification 2s ease-in-out';
-                    }
-                }, 500);
-            };
-            
-            // Handle notification close
-            browserNotification.onclose = () => {
-                console.log('Browser notification closed');
-            };
-            
-            // Auto close after 8 seconds (longer for better UX)
-            setTimeout(() => {
-                if (browserNotification) {
-                    browserNotification.close();
-                }
-            }, 8000);
-            
-            // Also show a custom in-app notification toast
-            this.showCustomNotificationToast(notification);
-        } else {
-            // Fallback: show custom notification if browser notifications are not available
-            this.showCustomNotificationToast(notification);
-        }
+        console.log('🔔 Showing modern custom notification:', notification);
+        
+        // Always use custom notifications for better control and modern design
+        this.showModernNotificationPopup(notification);
     }
     
-    // Show custom notification toast (Instagram-style)
-    showCustomNotificationToast(notification) {
+    // Show ultra-brief modern notification popup
+    showModernNotificationPopup(notification) {
+        // Prevent duplicate notifications
+        const existingNotification = document.querySelector('.modern-notification-popup');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+        
+        // Determine notification details based on action
+        const action = notification.action || 'confirmed';
+        let accentColor, iconClass, message;
+        
+        switch (action) {
+            case 'confirmed':
+                accentColor = '#10b981';
+                iconClass = 'fas fa-check-circle';
+                message = '✅ Order confirmed';
+                break;
+            case 'deleted':
+                accentColor = '#ef4444';
+                iconClass = 'fas fa-trash-alt';
+                message = '🗑️ Notification deleted';
+                break;
+            case 'edited':
+                accentColor = '#3b82f6';
+                iconClass = 'fas fa-edit';
+                message = '✏️ Notification updated';
+                break;
+            default:
+                accentColor = '#8b5cf6';
+                iconClass = 'fas fa-bell';
+                message = '🔔 New notification';
+        }
+        
         const toast = document.createElement('div');
-        toast.className = 'custom-notification-toast';
+        toast.className = 'modern-notification-popup';
         toast.style.cssText = `
             position: fixed;
-            top: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-            padding: 16px 20px;
+            top: 16px;
+            right: 16px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.8);
             z-index: 10000;
-            max-width: 350px;
-            min-width: 300px;
-            transform: translateX(400px);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 320px;
+            margin: 0 auto;
+            transform: translateY(-80px) scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
         
         toast.innerHTML = `
-            <div style="display: flex; align-items: flex-start; gap: 12px;">
-                <div style="flex-shrink: 0; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                    <i class="fas fa-user-check" style="font-size: 18px; color: white;"></i>
+            <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; background: ${accentColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="${iconClass}" style="font-size: 16px; color: white;"></i>
                 </div>
                 <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        ${notification.driver_email || 'Driver'} confirmed
+                    <div style="font-weight: 600; font-size: 14px; color: #1f2937; line-height: 1.3;">
+                        ${message}
                     </div>
-                    <div style="font-size: 13px; line-height: 1.4; opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-                        ${notification.message}
-                    </div>
-                    <div style="font-size: 11px; opacity: 0.7; margin-top: 6px;">
-                        <i class="fas fa-clock"></i> Just now
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 1px;">
+                        ${notification.driver_email || 'Driver'}
                     </div>
                 </div>
-                <button class="notification-close-btn" style="background: none; border: none; color: white; font-size: 16px; cursor: pointer; padding: 4px; opacity: 0.7; transition: opacity 0.2s;">
+                <button class="notification-close-btn" style="background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -2918,44 +3267,52 @@ class ShopApp {
         
         // Animate in
         setTimeout(() => {
-            toast.style.transform = 'translateX(0)';
-        }, 100);
+            toast.style.transform = 'translateY(0) scale(1)';
+            toast.style.opacity = '1';
+        }, 50);
         
         // Handle close button
         const closeBtn = toast.querySelector('.notification-close-btn');
-        closeBtn.addEventListener('click', () => {
-            toast.style.transform = 'translateX(400px)';
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 300);
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.color = '#374151';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.color = '#9ca3af';
+        });
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.closeNotificationPopup(toast);
         });
         
-        // Handle click on notification
-        toast.addEventListener('click', (e) => {
-            if (e.target !== closeBtn && !closeBtn.contains(e.target)) {
-                this.navigateToPage('alerts');
-                toast.style.transform = 'translateX(400px)';
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
-            }
+        // Handle click on notification (navigate to alerts)
+        toast.addEventListener('click', () => {
+            this.navigateToPage('alerts');
+            this.closeNotificationPopup(toast);
         });
         
-        // Auto remove after 6 seconds
+        // Auto remove after 4 seconds (shorter for brief notifications)
         setTimeout(() => {
             if (toast.parentNode) {
-                toast.style.transform = 'translateX(400px)';
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
+                this.closeNotificationPopup(toast);
             }
-        }, 6000);
+        }, 4000);
+    }
+    
+    // Helper function to close notification popup with animation
+    closeNotificationPopup(toast) {
+        toast.style.transform = 'translateY(-80px) scale(0.9)';
+        toast.style.opacity = '0';
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }
+    
+    // Keep original function as fallback
+    showCustomNotificationToast(notification) {
+        // Use the new modern popup instead
+        this.showModernNotificationPopup(notification);
     }
     
     // Update notification badge
@@ -3153,11 +3510,11 @@ class ShopApp {
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <div style="width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                                 <i class="fas fa-edit" style="font-size: 18px; color: white;"></i>
-                            </div>
+                    </div>
                             <div>
                                 <h3 style="margin: 0; font-size: 20px; font-weight: 600;">Edit Notification</h3>
                                 <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Update your notification message</p>
-                            </div>
+                    </div>
                         </div>
                         <button class="close-modal" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 8px; border-radius: 50%; transition: background-color 0.2s ease;">&times;</button>
                     </div>
@@ -3297,6 +3654,31 @@ class ShopApp {
             }
         } catch (error) {
             console.warn('⚠️ Could not play notification sound:', error);
+        }
+    }
+
+    // Advanced melodic chime for confirmation
+    playConfirmationSound() {
+        if (!this.audioContext || !this.isAudioEnabled) return;
+        try {
+            const ctx = this.audioContext;
+            const now = ctx.currentTime;
+            // Melodic chime: C5, E5, G5
+            const notes = [523.25, 659.25, 783.99];
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                gain.gain.setValueAtTime(0.25, now + i * 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12 + i * 0.12);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.12);
+                osc.stop(now + 0.12 + i * 0.12);
+            });
+        } catch (error) {
+            console.warn('⚠️ Could not play confirmation sound:', error);
         }
     }
 }

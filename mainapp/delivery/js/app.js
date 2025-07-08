@@ -2,6 +2,7 @@ class DeliveryApp {
     constructor() {
         this.orders = [];
         this.shops = [];
+        this.categories = [];
         this.recentOrders = [];
         this.notifications = [];
         this.currentFilter = 'all';
@@ -19,6 +20,7 @@ class DeliveryApp {
         this.audioContext = null;
         this.notificationAudio = null;
         this.isAudioEnabled = localStorage.getItem('notificationSound') !== 'false';
+        this.soundVolume = parseFloat(localStorage.getItem('soundVolume')) || 0.5; // Default 50% volume
         this.initNotificationSound();
         
         // Auto-refresh intervals
@@ -61,7 +63,8 @@ class DeliveryApp {
         this.connectWebSocket();
         
         await this.loadUserData();
-        this.loadSettingsData();
+        await this.loadSettingsData();
+        await this.loadCategories();
         
         // Request notification permission
         this.requestNotificationPermission();
@@ -319,6 +322,10 @@ class DeliveryApp {
                 break;
             case 'notifications':
                 this.loadNotifications();
+                // Setup the notifications menu when navigating to notifications page
+                setTimeout(() => {
+                    this.setupNotificationsMenu();
+                }, 100);
                 break;
             case 'settings':
                 this.renderSettingsPage();
@@ -498,31 +505,45 @@ class DeliveryApp {
             weekday: 'long', 
             year: 'numeric', 
             month: 'long', 
-            day: 'numeric' 
+            day: 'numeric',
+            timeZone: 'Europe/Athens'
         };
         const currentDateElement = document.getElementById('current-date');
         if (currentDateElement) {
-            currentDateElement.textContent = now.toLocaleDateString('en-US', options);
+            currentDateElement.textContent = now.toLocaleDateString('el-GR', options);
         }
     }
     
     formatTimeAgo(dateString) {
+        // Use same logic as shop app for consistency
+        const notificationDate = new Date(dateString);
         const now = new Date();
-        const date = new Date(dateString);
-        const diff = now - date;
-        const minutes = Math.floor(diff / 60000);
-        const hours = Math.floor(diff / 3600000);
-        const days = Math.floor(diff / 86400000);
+        const diffInSeconds = Math.floor((now - notificationDate) / 1000);
         
-        if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-        if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-        if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-        return 'Just now';
+        // For very recent notifications (less than 30 seconds), show "Τώρα"
+        if (diffInSeconds < 30) {
+            return 'Τώρα';
+        }
+        
+        // For today's notifications, show time only in Greek format
+        // Convert both dates to Greece timezone for comparison
+        const notificationDateGreece = new Date(notificationDate.toLocaleString("en-US", {timeZone: "Europe/Athens"}));
+        const nowGreece = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Athens"}));
+        const isToday = notificationDateGreece.toDateString() === nowGreece.toDateString();
+        
+        if (isToday) {
+            // Display the time in Greek timezone
+            return new Intl.DateTimeFormat('el-GR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Athens'
+            }).format(notificationDate);
+        }
     }
     
     // Modal methods
     openOrderModal() {
-        console.log('Opening order modal...');
+        console.log('Opening category selection modal first...');
         
         // Check if shops exist first
         if (this.shops.length === 0) {
@@ -533,6 +554,210 @@ class DeliveryApp {
             return;
         }
         
+        // Check if categories exist
+        if (this.categories.length === 0) {
+            this.showToast('❌ No categories available. Please contact admin.', 'error');
+            return;
+        }
+        
+        this.createCategorySelectionModal();
+    }
+
+    createCategorySelectionModal() {
+        console.log('Creating category selection modal...');
+        
+        // Remove existing modals
+        this.closeModal();
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'category-selection-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999;
+            padding: 20px;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        
+        modal.innerHTML = `
+            <div style="
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                width: 100%;
+                max-width: 480px;
+                max-height: 90vh;
+                overflow-y: auto;
+                position: relative;
+            ">
+                <!-- Header -->
+                <div style="
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    padding: 24px 28px;
+                    border-bottom: 1px solid #e5e7eb;
+                    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+                    border-radius: 16px 16px 0 0;
+                    position: relative;
+                ">
+                    <div style="
+                        width: 48px;
+                        height: 48px;
+                        background: linear-gradient(135deg, #ff6b35 0%, #f12711 100%);
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 20px;
+                        box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+                    ">
+                        <i class="fas fa-th-large"></i>
+                    </div>
+                    <div style="flex: 1;">
+                        <h3 style="
+                            font-size: 20px;
+                            font-weight: 700;
+                            color: #1f2937;
+                            margin: 0 0 4px 0;
+                        ">Select Category</h3>
+                        <p style="
+                            font-size: 14px;
+                            color: #6b7280;
+                            margin: 0;
+                        ">Choose the category for your order</p>
+                    </div>
+                    <button class="modal-close" type="button" style="
+                        position: absolute;
+                        top: 20px;
+                        right: 20px;
+                        width: 32px;
+                        height: 32px;
+                        background: #f3f4f6;
+                        border: none;
+                        border-radius: 50%;
+                        color: #6b7280;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 16px;
+                        font-weight: bold;
+                        transition: background-color 0.2s ease;
+                        z-index: 1;
+                    " onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'"
+                       title="Close Modal">
+                        ×
+                    </button>
+                </div>
+
+                <!-- Body -->
+                <div style="padding: 24px 28px;">
+                    <div class="categories-grid" style="
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                        gap: 16px;
+                    ">
+                        ${this.categories.filter(cat => cat.is_active).map(category => `
+                            <div class="category-option" data-category-id="${category.id}" style="
+                                background: white;
+                                border: 2px solid #e5e7eb;
+                                border-radius: 12px;
+                                padding: 20px;
+                                cursor: pointer;
+                                transition: all 0.3s ease;
+                                text-align: center;
+                            " onmouseover="this.style.borderColor='${category.color || '#ff6b35'}'; this.style.backgroundColor='${category.color || '#ff6b35'}10';"
+                               onmouseout="this.style.borderColor='#e5e7eb'; this.style.backgroundColor='white';"
+                               onclick="deliveryApp.selectCategoryForOrder('${category.id}')">
+                                <div style="
+                                    width: 48px;
+                                    height: 48px;
+                                    background: ${category.color || '#ff6b35'};
+                                    border-radius: 50%;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-size: 20px;
+                                    margin: 0 auto 12px auto;
+                                    box-shadow: 0 4px 12px ${category.color || '#ff6b35'}30;
+                                ">
+                                    <i class="${category.icon || 'fas fa-utensils'}"></i>
+                                </div>
+                                <h4 style="
+                                    font-size: 16px;
+                                    font-weight: 600;
+                                    color: #1f2937;
+                                    margin: 0 0 4px 0;
+                                ">${category.name}</h4>
+                                <p style="
+                                    font-size: 12px;
+                                    color: #6b7280;
+                                    margin: 0;
+                                ">${category.description || 'Click to select'}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add to DOM
+        document.body.appendChild(modal);
+        document.body.style.overflow = 'hidden';
+        
+        // Bind close events
+        const closeButton = modal.querySelector('.modal-close');
+        closeButton.addEventListener('click', () => {
+            this.closeModal();
+        });
+        
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+    }
+
+    selectCategoryForOrder(categoryId) {
+        console.log('Category selected for order:', categoryId);
+        
+        // Find the selected category
+        const selectedCategory = this.categories.find(cat => cat.id.toString() === categoryId.toString());
+        if (!selectedCategory) {
+            this.showToast('Category not found', 'error');
+            return;
+        }
+        
+        // Filter shops by the selected category
+        const categoryShops = this.shops.filter(shop => shop.category_id && shop.category_id.toString() === categoryId.toString());
+        
+        if (categoryShops.length === 0) {
+            this.showToast(`No shops available in the "${selectedCategory.name}" category. Please add shops in this category first.`, 'error');
+            this.closeModal();
+            return;
+        }
+        
+        // Close category selection modal and open order modal with filtered shops
+        this.closeModal();
+        
+        // Store selected category for the order modal
+        this.selectedCategoryForOrder = selectedCategory;
+        this.filteredShopsForOrder = categoryShops;
+        
+        // Create order modal with filtered shops
         this.createOrderModal();
     }
 
@@ -702,14 +927,22 @@ class DeliveryApp {
         
             // Get form data
             const nameInput = document.getElementById('shop-name');
+            const categorySelect = document.getElementById('shop-category');
             const shopName = nameInput?.value?.trim();
+            const categoryId = categorySelect?.value;
             
             console.log('Shop name:', shopName);
+            console.log('Category ID:', categoryId);
             
             if (!shopName) {
                 this.showToast('Please enter a shop name', 'error');
-            return;
-        }
+                return;
+            }
+            
+            if (!categoryId) {
+                this.showToast('Please select a category', 'error');
+                return;
+            }
 
         // Show loading state
             const submitBtn = document.querySelector('#shop-form button[type="submit"]');
@@ -733,7 +966,8 @@ class DeliveryApp {
                 method: 'POST',
                 headers: headers,
                     body: JSON.stringify({
-                        name: shopName
+                        name: shopName,
+                        category_id: parseInt(categoryId)
                     })
             });
 
@@ -818,7 +1052,17 @@ class DeliveryApp {
         existingErrors.forEach(error => error.remove());
     }
     
-    loadSettingsData() {
+    async loadSettingsData() {
+        // First, fetch settings from the server
+        const serverSettings = await this.getUserSettings();
+        
+        // Update local settings object with server data
+        if (serverSettings && serverSettings.earnings_per_order !== undefined) {
+            this.settings = this.settings || {};
+            this.settings.earningsPerOrder = parseFloat(serverSettings.earnings_per_order);
+        }
+        
+        // Update UI elements if they exist
         const earningsInput = document.getElementById('earnings-per-order');
         if (earningsInput) {
             earningsInput.value = this.settings.earningsPerOrder;
@@ -872,6 +1116,48 @@ class DeliveryApp {
         } else {
             console.error('Earnings input not found');
             this.showToast('Error: Could not find earnings input', 'error');
+        }
+    }
+
+    async loadCategories() {
+        try {
+            console.log('Loading categories...');
+            
+            // Create headers with authentication
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Add authorization header if we have a session token
+            if (this.sessionToken) {
+                headers['Authorization'] = `Bearer ${this.sessionToken}`;
+            }
+            
+            const response = await fetch('/api/categories', {
+                method: 'GET',
+                headers: headers
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    console.warn('Categories require authentication, user needs to log in again');
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.categories = result.categories || [];
+                console.log('Categories loaded successfully:', this.categories.length);
+            } else {
+                throw new Error(result.message || 'Failed to load categories');
+            }
+        } catch (error) {
+            console.error('Error loading categories:', error);
+            this.categories = [];
+            // Don't show toast for categories loading error as it's not critical for app functionality
         }
     }
     
@@ -1043,35 +1329,115 @@ class DeliveryApp {
     }
     
     showToast(message, type = 'success') {
-        const container = document.getElementById('toast-container') || this.createToastContainer();
+        // Use the new modern notification style for all toasts
+        this.showModernToast(message, type);
+    }
+    
+    // Modern toast notification (brief style for all messages)
+    showModernToast(message, type = 'success') {
+        // Prevent duplicate notifications
+        const existingNotification = document.querySelector('.modern-toast-popup');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+        
+        // Determine colors and icons based on type
+        let accentColor, iconClass;
+        
+        switch (type) {
+            case 'success':
+                accentColor = '#10b981';
+                iconClass = 'fas fa-check-circle';
+                break;
+            case 'error':
+                accentColor = '#ef4444';
+                iconClass = 'fas fa-exclamation-circle';
+                break;
+            case 'warning':
+                accentColor = '#f59e0b';
+                iconClass = 'fas fa-exclamation-triangle';
+                break;
+            default: // info
+                accentColor = '#3b82f6';
+                iconClass = 'fas fa-info-circle';
+        }
         
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        
-        const icon = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
+        toast.className = 'modern-toast-popup';
+        toast.style.cssText = `
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            z-index: 10000;
+            max-width: 320px;
+            margin: 0 auto;
+            transform: translateY(-80px) scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        `;
         
         toast.innerHTML = `
-            <div class="toast-content">
-                <i class="${icon}"></i>
-                <span>${message}</span>
+            <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; background: ${accentColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="${iconClass}" style="font-size: 14px; color: white;"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 500; font-size: 13px; color: #1f2937; line-height: 1.3;">
+                        ${message}
+                    </div>
+                </div>
+                <button class="toast-close-btn" style="background: none; border: none; color: #9ca3af; font-size: 14px; cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
         `;
 
-        container.appendChild(toast);
-
+        document.body.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+            toast.style.transform = 'translateY(0) scale(1)';
+            toast.style.opacity = '1';
+        }, 50);
+        
+        // Handle close button
+        const closeBtn = toast.querySelector('.toast-close-btn');
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.color = '#374151';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.color = '#9ca3af';
+        });
+        closeBtn.addEventListener('click', () => {
+            this.closeModernToast(toast);
+        });
+        
+        // Auto remove after 3 seconds (brief for status messages)
+        setTimeout(() => {
+            if (toast.parentNode) {
+                this.closeModernToast(toast);
+            }
+        }, 3000);
+    }
+    
+    // Helper function to close modern toast with animation
+    closeModernToast(toast) {
+        toast.style.transform = 'translateY(-80px) scale(0.9)';
+        toast.style.opacity = '0';
         setTimeout(() => {
             if (toast.parentNode) {
                 toast.parentNode.removeChild(toast);
             }
-        }, 4000);
+        }, 300);
     }
     
-    createToastContainer() {
-        const container = document.createElement('div');
-        container.id = 'toast-container';
-        document.body.appendChild(container);
-        return container;
-    }
+    // createToastContainer removed - using modern notifications only
 
     renderOrders() {
         console.log('Rendering orders...', this.orders.length, 'orders found');
@@ -1187,14 +1553,16 @@ class DeliveryApp {
         
         const modalHTML = `
             <div id="order-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;">
-                <div style="background: white; border-radius: 12px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+                <div style="background: white; border-radius: 12px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; position: relative;">
+                    <!-- Close Button -->
+                    <button class="modal-close-x" style="position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; background: #f3f4f6; border: none; border-radius: 50%; color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; transition: background-color 0.2s ease; z-index: 10;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">×</button>
+                    
                     <div style="padding: 24px 24px 0; border-bottom: 1px solid #e5e7eb; margin-bottom: 20px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding-right: 40px;">
                             <h3 style="margin: 0; font-size: 20px; font-weight: 600; color: #1f2937; display: flex; align-items: center; gap: 8px;">
                                 <i class="fas fa-plus-circle" style="color: var(--primary-color);"></i>
                                 Add New Order
                             </h3>
-                            <button class="modal-close" style="background: none; border: none; font-size: 24px; color: #6b7280; cursor: pointer; padding: 4px; line-height: 1;">×</button>
                     </div>
                         <p style="margin: 8px 0 16px; color: #6b7280; font-size: 14px;">Record a new delivery order</p>
                 </div>
@@ -1207,8 +1575,14 @@ class DeliveryApp {
                             </label>
                             <select id="order-shop" required style="width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white;">
                                 <option value="">Select a shop...</option>
-                                ${this.shops.map(shop => `<option value="${shop.id}">${shop.name}</option>`).join('')}
+                                ${(this.filteredShopsForOrder || this.shops).map(shop => `<option value="${shop.id}">${shop.name}</option>`).join('')}
                             </select>
+                            ${this.selectedCategoryForOrder ? `
+                                <small style="color: #6b7280; font-size: 12px; margin-top: 4px; display: block;">
+                                    <i class="fas fa-info-circle" style="color: #ff6b35;"></i>
+                                    Showing shops in "${this.selectedCategoryForOrder.name}" category
+                                </small>
+                            ` : ''}
                         </div>
                         
                         <div style="margin-bottom: 16px;">
@@ -1261,7 +1635,7 @@ class DeliveryApp {
                         </div>
                         
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button type="button" class="modal-close" style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;">
+                            <button type="button" class="modal-close" style="padding: 10px 20px; border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background-color 0.2s ease;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
                                 Cancel
                             </button>
                             <button type="submit" style="padding: 10px 20px; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px;">
@@ -1356,7 +1730,7 @@ class DeliveryApp {
                 max-height: 90vh;
                 overflow-y: auto;
                 position: relative;
-                animation: modalSlideUp 0.3s ease-out;
+
             ">
                 <!-- Header -->
                 <div style="
@@ -1397,21 +1771,26 @@ class DeliveryApp {
                         ">Add a restaurant or shop you deliver for</p>
                     </div>
                     <button class="modal-close" type="button" style="
-                        background: none;
+                        position: absolute;
+                        top: 20px;
+                        right: 20px;
+                        width: 32px;
+                        height: 32px;
+                        background: #f3f4f6;
                         border: none;
-                        font-size: 18px;
+                        border-radius: 50%;
                         color: #6b7280;
                         cursor: pointer;
-                        padding: 12px;
-                        border-radius: 50%;
-                        transition: all 0.2s ease;
-                        position: absolute;
-                        top: 16px;
-                        right: 16px;
-                    " onmouseover="this.style.background='#f3f4f6'; this.style.color='#1f2937'; this.style.transform='scale(1.1)';" 
-                       onmouseout="this.style.background='none'; this.style.color='#6b7280'; this.style.transform='scale(1)';"
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 16px;
+                        font-weight: bold;
+                        transition: background-color 0.2s ease;
+                        z-index: 1;
+                    " onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'"
                        title="Close Modal">
-                        <i class="fas fa-times"></i>
+                        ×
                     </button>
                 </div>
 
@@ -1453,8 +1832,8 @@ class DeliveryApp {
                                     box-sizing: border-box;
                                     font-family: inherit;
                                 "
-                                onfocus="this.style.borderColor='#ff6b35'; this.style.boxShadow='0 0 0 4px rgba(255, 107, 53, 0.1)'; this.style.transform='translateY(-1px)';"
-                                onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'; this.style.transform='translateY(0)';"
+                                onfocus="this.style.borderColor='#ff6b35'; this.style.boxShadow='0 0 0 4px rgba(255, 107, 53, 0.1)';"
+                                onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none';"
                             >
                             <small style="
                                 display: flex;
@@ -1467,6 +1846,59 @@ class DeliveryApp {
                             ">
                                 <i class="fas fa-info-circle" style="color: #ff6b35; font-size: 10px;"></i>
                                 Enter the name of the restaurant or shop you deliver for
+                            </small>
+                        </div>
+
+                        <!-- Category Selection -->
+                        <div style="margin-bottom: 24px;">
+                            <label style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #1f2937;
+                                margin-bottom: 8px;
+                            ">
+                                <i class="fas fa-th-large" style="color: #ff6b35; width: 16px;"></i>
+                                <span>Category *</span>
+                            </label>
+                            <select 
+                                id="shop-category" 
+                                name="shop-category"
+                                required
+                                style="
+                                    width: 100%;
+                                    padding: 16px 20px;
+                                    border: 2px solid #e5e7eb;
+                                    border-radius: 12px;
+                                    font-size: 16px;
+                                    background: white;
+                                    color: #1f2937;
+                                    transition: all 0.3s ease;
+                                    box-sizing: border-box;
+                                    font-family: inherit;
+                                    cursor: pointer;
+                                "
+                                onfocus="this.style.borderColor='#ff6b35'; this.style.boxShadow='0 0 0 4px rgba(255, 107, 53, 0.1)';"
+                                onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none';"
+                            >
+                                <option value="">Select a category</option>
+                                ${this.categories.filter(cat => cat.is_active).map(category => `
+                                    <option value="${category.id}">${category.name}</option>
+                                `).join('')}
+                            </select>
+                            <small style="
+                                display: flex;
+                                align-items: center;
+                                gap: 6px;
+                                font-size: 12px;
+                                color: #6b7280;
+                                margin-top: 8px;
+                                opacity: 0.8;
+                            ">
+                                <i class="fas fa-info-circle" style="color: #ff6b35; font-size: 10px;"></i>
+                                Select the category that best describes this shop
                             </small>
                         </div>
                         
@@ -1489,13 +1921,12 @@ class DeliveryApp {
                                 color: #6b7280;
                                 border: 2px solid #e5e7eb;
                                 cursor: pointer;
-                                transition: all 0.3s ease;
                                 display: flex;
                                 align-items: center;
                                 justify-content: center;
                                 gap: 8px;
-                            " onmouseover="this.style.background='#e5e7eb'; this.style.color='#1f2937'; this.style.transform='translateY(-2px)';"
-                               onmouseout="this.style.background='#f9fafb'; this.style.color='#6b7280'; this.style.transform='translateY(0)';">
+                            " onmouseover="this.style.background='#e5e7eb'; this.style.color='#1f2937';"
+                               onmouseout="this.style.background='#f9fafb'; this.style.color='#6b7280';">
                                 <i class="fas fa-times"></i> 
                                 <span>Cancel</span>
                             </button>
@@ -1516,8 +1947,8 @@ class DeliveryApp {
                                 justify-content: center;
                                 gap: 8px;
                                 box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
-                            " onmouseover="this.style.boxShadow='0 6px 20px rgba(255, 107, 53, 0.4)'; this.style.transform='translateY(-2px)';"
-                               onmouseout="this.style.boxShadow='0 4px 12px rgba(255, 107, 53, 0.3)'; this.style.transform='translateY(0)';">
+                            " onmouseover="this.style.boxShadow='0 6px 20px rgba(255, 107, 53, 0.4)';"
+                               onmouseout="this.style.boxShadow='0 4px 12px rgba(255, 107, 53, 0.3)';">
                                 <i class="fas fa-plus"></i> 
                                 <span>Add Shop</span>
                             </button>
@@ -1550,8 +1981,8 @@ class DeliveryApp {
     bindModalEvents(modal) {
         console.log('Binding modal events...');
         
-        // Close button events
-        const closeButtons = modal.querySelectorAll('.modal-close');
+        // Close button events (both × and Cancel buttons)
+        const closeButtons = modal.querySelectorAll('.modal-close, .modal-close-x');
         console.log('Found close buttons:', closeButtons.length);
         
         closeButtons.forEach(btn => {
@@ -1602,23 +2033,22 @@ class DeliveryApp {
     }
 
     getTimeAgo(date) {
+        // Simple, reliable Greek time display
+        const notificationDate = new Date(date);
         const now = new Date();
-        const diffInSeconds = Math.floor((now - date) / 1000);
+        const diffInSeconds = Math.floor((now - notificationDate) / 1000);
         
-        if (diffInSeconds < 60) {
-            return 'Just now';
-        } else if (diffInSeconds < 3600) {
-            const minutes = Math.floor(diffInSeconds / 60);
-            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-        } else if (diffInSeconds < 86400) {
-            const hours = Math.floor(diffInSeconds / 3600);
-            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-        } else if (diffInSeconds < 2592000) {
-            const days = Math.floor(diffInSeconds / 86400);
-            return `${days} day${days > 1 ? 's' : ''} ago`;
-        } else {
-            return date.toLocaleDateString();
+        // For very recent notifications (less than 30 seconds), show "Τώρα"
+        if (diffInSeconds < 30) {
+            return 'Τώρα';
         }
+        
+        // Always show Greek time
+        return new Intl.DateTimeFormat('el-GR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Europe/Athens'
+        }).format(notificationDate);
     }
 
     editShop(shopId) {
@@ -1721,6 +2151,43 @@ class DeliveryApp {
                                 margin-top: 4px;
                             "></div>
                         </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <label for="edit-shop-category" style="
+                                display: block;
+                                font-size: 14px;
+                                font-weight: 500;
+                                color: #4b5563;
+                                margin-bottom: 8px;
+                            ">
+                                Category *
+                            </label>
+                            <select 
+                                id="edit-shop-category" 
+                                required
+                                style="
+                                    width: 100%;
+                                    padding: 12px;
+                                    border: 1px solid #d1d5db;
+                                    border-radius: 8px;
+                                    font-size: 15px;
+                                    background: white;
+                                    cursor: pointer;
+                                "
+                            >
+                                <option value="">Select a category</option>
+                                ${this.categories.filter(cat => cat.is_active).map(category => `
+                                    <option value="${category.id}" ${shop.category_id === category.id ? 'selected' : ''}>
+                                        ${category.name}
+                                    </option>
+                                `).join('')}
+                            </select>
+                            <div class="category-form-error" style="
+                                color: #ef4444;
+                                font-size: 14px;
+                                margin-top: 4px;
+                            "></div>
+                        </div>
                     </form>
                 </div>
                 
@@ -1801,11 +2268,18 @@ class DeliveryApp {
                 
                 // Get form data
                 const shopName = document.getElementById('edit-shop-name').value.trim();
+                const categoryId = document.getElementById('edit-shop-category').value;
                 
                 // Validate
                 if (!shopName) {
                     const errorDiv = document.querySelector('.form-error');
                     errorDiv.textContent = 'Shop name is required';
+                    return;
+                }
+                
+                if (!categoryId) {
+                    const errorDiv = document.querySelector('.category-form-error');
+                    errorDiv.textContent = 'Category is required';
                     return;
                 }
                 
@@ -1826,7 +2300,10 @@ class DeliveryApp {
                     const response = await fetch(`/api/partner_shops/${shop.id}`, {
                         method: 'PUT',
                         headers: headers,
-                        body: JSON.stringify({ name: shopName })
+                        body: JSON.stringify({ 
+                            name: shopName,
+                            category_id: parseInt(categoryId)
+                        })
                     });
                     
                     const result = await response.json();
@@ -2158,10 +2635,12 @@ class DeliveryApp {
             bottom: 0 !important;
             background: rgba(0, 0, 0, 0.7) !important;
             display: flex !important;
-            align-items: center !important;
+            align-items: flex-start !important;
             justify-content: center !important;
             z-index: 999999 !important;
             padding: 20px !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
         ">
             <div style="
                 background: white !important;
@@ -2170,8 +2649,11 @@ class DeliveryApp {
                 width: 100% !important;
                 max-width: 500px !important;
                 position: relative !important;
+                margin: 20px auto !important;
+                max-height: calc(100vh - 40px) !important;
+                display: flex !important;
+                flex-direction: column !important;
                 overflow: hidden !important;
-                margin: 0 auto !important;
             ">
                 <!-- Header -->
                 <div style="
@@ -2179,6 +2661,7 @@ class DeliveryApp {
                     padding: 24px;
                     text-align: center;
                     color: white;
+                    flex-shrink: 0;
                 ">
                     <div style="
                         width: 48px;
@@ -2201,7 +2684,7 @@ class DeliveryApp {
                 </div>
                 
                 <!-- Content -->
-                <div style="padding: 24px;">
+                <div style="padding: 24px; overflow-y: auto; flex: 1;">
                     <form id="edit-order-form">
                         <div style="margin-bottom: 16px;">
                             <label style="
@@ -2238,6 +2721,55 @@ class DeliveryApp {
                                 color: #4b5563;
                                 margin-bottom: 8px;
                             ">
+                                <i class="fas fa-map-marker-alt" style="margin-right: 8px;"></i>
+                                Delivery Address
+                            </label>
+                            <textarea 
+                                id="edit-order-address" 
+                                placeholder="Enter delivery address" 
+                                style="
+                                    width: 100%;
+                                    padding: 12px;
+                                    border: 1px solid #d1d5db;
+                                    border-radius: 8px;
+                                    font-size: 15px;
+                                    min-height: 80px;
+                                    resize: vertical;
+                                "
+                            >${order.address || ''}</textarea>
+                        </div>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="
+                                display: block;
+                                font-size: 14px;
+                                font-weight: 500;
+                                color: #4b5563;
+                                margin-bottom: 8px;
+                            ">
+                                <i class="fas fa-credit-card" style="margin-right: 8px;"></i>
+                                Payment Method
+                            </label>
+                            <select id="edit-order-payment" style="
+                                width: 100%;
+                                padding: 12px;
+                                border: 1px solid #d1d5db;
+                                border-radius: 8px;
+                                font-size: 15px;
+                            " onchange="deliveryApp.handlePaymentMethodChange()">
+                                <option value="cash" ${(order.payment_method || 'cash') === 'cash' ? 'selected' : ''}>Cash</option>
+                                <option value="paid" ${order.payment_method === 'paid' ? 'selected' : ''}>Paid</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 16px;">
+                            <label style="
+                                display: block;
+                                font-size: 14px;
+                                font-weight: 500;
+                                color: #4b5563;
+                                margin-bottom: 8px;
+                            ">
                                 <i class="fas fa-dollar-sign" style="margin-right: 8px;"></i>
                                 Order Price
                             </label>
@@ -2255,7 +2787,13 @@ class DeliveryApp {
                                     border-radius: 8px;
                                     font-size: 15px;
                                 "
+                                ${order.payment_method === 'paid' ? 'disabled' : ''}
                             >
+                            ${order.payment_method === 'paid' ? `
+                                <small style="color: #6b7280; font-size: 12px; margin-top: 4px; display: block;">
+                                    <i class="fas fa-info-circle"></i> Price is locked when payment is marked as "Paid"
+                                </small>
+                            ` : ''}
                         </div>
                         
                         <div style="margin-bottom: 16px;">
@@ -2319,6 +2857,9 @@ class DeliveryApp {
                     display: flex;
                     gap: 12px;
                     padding: 0 24px 24px;
+                    flex-shrink: 0;
+                    border-top: 1px solid #e5e7eb;
+                    background: white;
                 ">
                     <button id="edit-order-cancel" style="
                         flex: 1;
@@ -2395,6 +2936,8 @@ class DeliveryApp {
                 const shopId = document.getElementById('edit-order-shop').value;
                 const price = document.getElementById('edit-order-price').value;
                 const notes = document.getElementById('edit-order-notes').value;
+                const address = document.getElementById('edit-order-address').value;
+                const paymentMethod = document.getElementById('edit-order-payment').value;
                 
                 // Validate
                 if (!shopId) {
@@ -2402,9 +2945,17 @@ class DeliveryApp {
                     return;
                 }
                 
+                // For paid orders, allow 0 price, for cash orders require valid price > 0
+                if (paymentMethod === 'paid') {
                 if (!price || isNaN(parseFloat(price)) || parseFloat(price) < 0) {
-                    this.showToast('Please enter a valid price', 'error');
+                        this.showToast('Please enter a valid price (0 or higher for paid orders)', 'error');
                     return;
+                    }
+                } else {
+                    if (!price || isNaN(parseFloat(price)) || parseFloat(price) <= 0) {
+                        this.showToast('Please enter a valid price greater than 0', 'error');
+                        return;
+                    }
                 }
                 
                 // Show loading state
@@ -2428,6 +2979,8 @@ class DeliveryApp {
                             shop_id: shopId,
                             price: parseFloat(price),
                             notes: notes,
+                            address: address,
+                            payment_method: paymentMethod,
                             // Keep original earnings
                             earnings: parseFloat(order.earnings || 0)
                         })
@@ -2441,7 +2994,9 @@ class DeliveryApp {
                             ...order, 
                             shop_id: shopId,
                             price: parseFloat(price),
-                            notes: notes
+                            notes: notes,
+                            address: address,
+                            payment_method: paymentMethod
                         };
                         
                         this.orders = this.orders.map(o => {
@@ -2559,8 +3114,12 @@ class DeliveryApp {
         }
         
         const orderDate = new Date(order.created_at);
-        const formattedDate = orderDate.toLocaleDateString();
-        const formattedTime = orderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = orderDate.toLocaleDateString('el-GR', { timeZone: 'Europe/Athens' });
+        const formattedTime = orderDate.toLocaleTimeString('el-GR', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            timeZone: 'Europe/Athens'
+        });
         
         const orderPrice = parseFloat(order.price || 0).toFixed(2);
         const orderEarnings = parseFloat(order.earnings || this.settings.earningsPerOrder).toFixed(2);
@@ -2605,20 +3164,25 @@ class DeliveryApp {
                         <p style="font-size: 12px; color: #6b7280; margin: 2px 0 0 0;">${shopName}</p>
                     </div>
                     <button class="modal-close" type="button" style="
-                        background: none;
+                        position: absolute;
+                        top: 16px;
+                        right: 16px;
+                        width: 28px;
+                        height: 28px;
+                        background: #f3f4f6;
                         border: none;
-                        width: 24px;
-                        height: 24px;
+                        border-radius: 50%;
+                        color: #6b7280;
+                        cursor: pointer;
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        color: #6b7280;
-                        cursor: pointer;
-                        border-radius: 3px;
-                        transition: all 0.15s ease;
-                    " onmouseover="this.style.background='#f3f4f6'; this.style.color='#374151'" 
-                       onmouseout="this.style.background='none'; this.style.color='#6b7280'">
-                        <i class="fas fa-times"></i>
+                        font-size: 14px;
+                        font-weight: bold;
+                        transition: background-color 0.2s ease;
+                        z-index: 1;
+                    " onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">
+                        ×
                     </button>
                 </div>
                 
@@ -2655,6 +3219,38 @@ class DeliveryApp {
                         <div style="font-size: 11px; color: #9ca3af;">${this.getTimeAgo(orderDate)}</div>
                     </div>
                     
+                    <!-- Address -->
+                    ${order.address ? `
+                        <div style="
+                            padding: 12px;
+                            background: #ecfdf5;
+                            border-radius: 4px;
+                            margin-bottom: 16px;
+                        ">
+                            <div style="font-size: 11px; color: #065f46; text-transform: uppercase; margin-bottom: 4px;">Delivery Address</div>
+                            <div style="color: #047857; font-size: 13px; line-height: 1.4;">${order.address}</div>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Payment Method -->
+                    <div style="
+                        padding: 12px;
+                        background: #f0f9ff;
+                        border-radius: 4px;
+                        margin-bottom: 16px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                    ">
+                        <div>
+                            <div style="font-size: 11px; color: #075985; text-transform: uppercase; margin-bottom: 4px;">Payment Method</div>
+                            <div style="color: #0369a1; font-size: 13px; font-weight: 500; text-transform: capitalize;">${order.payment_method || 'cash'}</div>
+                        </div>
+                        <div style="color: #0369a1; font-size: 18px;">
+                            <i class="fas ${order.payment_method === 'cash' ? 'fa-money-bill-wave' : 'fa-credit-card'}"></i>
+                        </div>
+                    </div>
+                    
                     ${order.notes ? `
                         <div style="
                             padding: 12px;
@@ -2672,7 +3268,7 @@ class DeliveryApp {
                         display: flex;
                         gap: 8px;
                     ">
-                        <button onclick="deliveryApp.editOrder(${order.id}); deliveryApp.closeModal();" style="
+                        <button onclick="deliveryApp.editOrder(${order.id});" style="
                             flex: 1;
                             background: #2563eb;
                             color: white;
@@ -2987,11 +3583,33 @@ class DeliveryApp {
         const testSoundBtn = document.getElementById('test-sound-btn');
         if (testSoundBtn) {
             testSoundBtn.addEventListener('click', async () => {
-                if (!this.isAudioEnabled) {
-                    this.showToast('Please enable sound notifications first', 'warning');
-                    return;
+                try {
+                    // Always try to play the sound, regardless of settings
+                    console.log('🎵 Testing notification sound...');
+                    
+                    // Show immediate feedback
+                    const originalText = testSoundBtn.innerHTML;
+                    testSoundBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Playing...';
+                    testSoundBtn.disabled = true;
+                    
+                    // Play all test sounds in sequence for better testing
+                    await this.playNotificationSound(false);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await this.playConfirmationSound();
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await this.playWarningSound();
+                    
+                    // Restore button
+                    testSoundBtn.innerHTML = originalText;
+                    testSoundBtn.disabled = false;
+                    
+                    this.showToast('🎵 Sound test completed!', 'success');
+                } catch (error) {
+                    console.error('Error playing test sound:', error);
+                    testSoundBtn.innerHTML = '<i class="fas fa-play"></i> Test Sound';
+                    testSoundBtn.disabled = false;
+                    this.showToast('Sound test failed. Check your audio settings.', 'error');
                 }
-                await this.playNotificationSound();
             });
         }
         
@@ -3075,6 +3693,12 @@ class DeliveryApp {
                 settings.notificationSettings = settings.notification_settings;
             }
             
+            // Update local settings state for earnings
+            if (settings.earnings_per_order !== undefined) {
+                this.settings = this.settings || {};
+                this.settings.earningsPerOrder = parseFloat(settings.earnings_per_order);
+            }
+            
             return settings;
         } catch (error) {
             console.error('Error fetching user settings:', error);
@@ -3100,12 +3724,8 @@ class DeliveryApp {
                 throw new Error('Not authenticated');
             }
             
-            // Convert notificationSettings to notification_settings for the API
+            // Don't convert notificationSettings - keep it as camelCase to match database schema
             const apiUpdates = { ...updates };
-            if (apiUpdates.notificationSettings) {
-                apiUpdates.notification_settings = apiUpdates.notificationSettings;
-                delete apiUpdates.notificationSettings;
-            }
 
             const response = await fetch('/api/user/settings', {
                 method: 'PATCH',
@@ -3123,10 +3743,16 @@ class DeliveryApp {
             
             const settings = await response.json();
             
-            // Update local state
+            // Update local state for notification settings
             if (updates.notificationSettings) {
                 this.isAudioEnabled = updates.notificationSettings.soundEnabled;
                 localStorage.setItem('notificationSound', updates.notificationSettings.soundEnabled.toString());
+            }
+            
+            // Update local earnings setting if provided
+            if (updates.earnings_per_order !== undefined) {
+                this.settings = this.settings || {};
+                this.settings.earningsPerOrder = parseFloat(updates.earnings_per_order);
             }
             
             return settings;
@@ -3506,6 +4132,12 @@ class DeliveryApp {
                 
                 // Start real-time updates for notification times
                 this.startNotificationTimeUpdates();
+                
+                // Update the menu with correct counts after loading notifications
+                if (document.getElementById('notifications-page')) {
+                    console.log('🔄 Refreshing menu after loading notifications...');
+                    this.updateNotificationsMenuCounts();
+                }
             } else {
                 throw new Error(data.message || 'Failed to load notifications');
             }
@@ -3576,10 +4208,18 @@ class DeliveryApp {
         
         const pendingCount = notifications.filter(n => n.status === 'pending').length;
         
+        // PRESERVE the existing Quick Actions button before re-rendering
+        const existingMenuContainer = document.getElementById('notifications-menu-container');
+        let preservedMenuHTML = '';
+        if (existingMenuContainer) {
+            preservedMenuHTML = existingMenuContainer.outerHTML;
+            console.log('🔧 Preserving Quick Actions button before re-render');
+        }
+        
         // Create header with stats
         const headerHTML = `
             <div class="notifications-dashboard">
-                <div class="dashboard-header">
+                <div class="dashboard-header" style="position: relative;">
                     <div class="header-left">
                         <h2 class="notifications-title">
                             <i class="fas fa-bell"></i>
@@ -3619,6 +4259,26 @@ class DeliveryApp {
                 ${timelineHTML}
             </div>
         `;
+        
+        // RESTORE the Quick Actions button after re-rendering
+        if (preservedMenuHTML) {
+            const newHeader = document.querySelector('.notifications-dashboard .dashboard-header .header-left');
+            if (newHeader) {
+                newHeader.insertAdjacentHTML('beforeend', preservedMenuHTML);
+                console.log('🔧 Restored Quick Actions button after re-render');
+                
+                // Re-store the reference to the menu container
+                this.currentMenuContainer = document.getElementById('notifications-menu-container');
+                
+                // Re-bind events to the restored button
+                this.bindMenuEvents();
+            }
+        } else {
+            // If no existing menu, create it fresh
+            setTimeout(() => {
+                this.setupNotificationsMenu();
+            }, 100);
+        }
     }
 
     groupNotificationsByDate(notifications) {
@@ -3632,14 +4292,15 @@ class DeliveryApp {
             let dateKey;
             
             if (notificationDate.toDateString() === today.toDateString()) {
-                dateKey = 'Today';
+                dateKey = 'Σήμερα';
             } else if (notificationDate.toDateString() === yesterday.toDateString()) {
-                dateKey = 'Yesterday';
+                dateKey = 'Χθες';
             } else {
-                dateKey = notificationDate.toLocaleDateString('en-US', { 
+                dateKey = notificationDate.toLocaleDateString('el-GR', { 
                     weekday: 'long', 
                     month: 'short', 
-                    day: 'numeric' 
+                    day: 'numeric',
+                    timeZone: 'Europe/Athens'
                 });
             }
             
@@ -3656,7 +4317,14 @@ class DeliveryApp {
         const isUnread = !notification.is_read;
         const isPending = notification.status === 'pending';
         const isConfirmed = notification.status === 'confirmed';
-        const formattedTime = this.formatNotificationTime(notification.created_at);
+        // Check if this is a very recent notification (less than 2 minutes old)
+        const notificationTime = new Date(notification.created_at);
+        const now = new Date();
+        const diffInSeconds = Math.floor((now - notificationTime) / 1000);
+        
+        // If notification is very recent (likely just received), use current timestamp for display
+        const timestamp = diffInSeconds < 120 ? new Date().toISOString() : notification.created_at;
+        const formattedTime = this.formatNotificationTime(timestamp);
         
         console.log('Creating notification card for:', notification.id, 'Status:', notification.status);
         
@@ -3718,53 +4386,22 @@ class DeliveryApp {
     }
 
     formatNotificationTime(dateString) {
-        const date = new Date(dateString);
+        // Simple, reliable Greek time display
+        const notificationDate = new Date(dateString);
         const now = new Date();
-        const diffInSeconds = Math.floor((now - date) / 1000);
-        const diffInMinutes = Math.floor(diffInSeconds / 60);
-        const diffInHours = Math.floor(diffInMinutes / 60);
-        const diffInDays = Math.floor(diffInHours / 24);
+        const diffInSeconds = Math.floor((now - notificationDate) / 1000);
         
-        // Less than 1 minute
-        if (diffInSeconds < 60) {
-            return 'Just now';
+        // For very recent notifications (less than 30 seconds), show "Τώρα"
+        if (diffInSeconds < 30) {
+            return 'Τώρα';
         }
         
-        // Less than 1 hour
-        if (diffInMinutes < 60) {
-            return `${diffInMinutes}m ago`;
-        }
-        
-        // Less than 24 hours
-        if (diffInHours < 24) {
-            return `${diffInHours}h ago`;
-        }
-        
-        // Less than 7 days
-        if (diffInDays < 7) {
-            return `${diffInDays}d ago`;
-        }
-        
-        // More than 7 days - show actual date and time
-        const today = new Date();
-        
-        // Check if it's from this year
-        if (date.getFullYear() === today.getFullYear()) {
-            // Same year - show month, day, and time
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
+        // Always show Greek time
+        return new Intl.DateTimeFormat('el-GR', {
                 hour: '2-digit',
-                minute: '2-digit'
-            });
-        } else {
-            // Different year - show full date
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-        }
+            minute: '2-digit',
+            timeZone: 'Europe/Athens'
+        }).format(notificationDate);
     }
 
     escapeHTML(str) {
@@ -3988,17 +4625,26 @@ class DeliveryApp {
             confirmBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 console.log('Confirm button clicked for notification:', notificationId);
+                
+                // Disable button immediately to prevent multiple clicks
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirming...';
+                
                 this.confirmNotification(notificationId);
             });
             
             // Hover effect
             confirmBtn.addEventListener('mouseenter', () => {
-                confirmBtn.style.transform = 'translateY(-1px)';
-                confirmBtn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+                if (!confirmBtn.disabled) {
+                    confirmBtn.style.transform = 'translateY(-1px)';
+                    confirmBtn.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
+                }
             });
             confirmBtn.addEventListener('mouseleave', () => {
-                confirmBtn.style.transform = 'translateY(0)';
-                confirmBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                if (!confirmBtn.disabled) {
+                    confirmBtn.style.transform = 'translateY(0)';
+                    confirmBtn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                }
             });
         }
         
@@ -4068,68 +4714,63 @@ class DeliveryApp {
     }
 
     async confirmNotification(notificationId) {
+        // Find and disable the confirm button immediately
+        const confirmBtn = document.querySelector(`button[onclick*="${notificationId}"]`);
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirming...';
+        }
+
         try {
-            if (!this.currentUser || !this.currentUser.id) {
-                console.error('No user ID available');
-                return;
-            }
+            console.log('Confirming notification:', notificationId);
             
-            const response = await fetch(`/api/driver/${this.currentUser.id}/notifications/${notificationId}/confirm`, {
+            const response = await fetch(`/api/driver/${this.userId}/notifications/${notificationId}/confirm`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
-
-            if (!response.ok) {
-                this.showToast('Server error: Could not confirm notification', 'error');
-                return;
-            }
             
             const result = await response.json();
-
+            
             if (result.success) {
+                console.log('Notification confirmed successfully');
+                
+                // Play confirmation sound for the driver
+                this.playConfirmationSound();
+                
                 // Update the notification in the local array
-                const index = this.notifications.findIndex(n => n.id === notificationId);
-                if (index !== -1) {
-                    this.notifications[index].status = 'confirmed';
-                    this.notifications[index].is_read = true;
-                    this.notifications[index].confirmed_at = new Date().toISOString();
-                    
-                    // Re-render the specific notification card
-                    this.renderSingleNotification(this.notifications[index]);
+                const notificationIndex = this.notifications.findIndex(n => n.id === notificationId);
+                if (notificationIndex !== -1) {
+                    this.notifications[notificationIndex].status = 'confirmed';
+                    this.notifications[notificationIndex].is_read = true;
+                    this.notifications[notificationIndex].confirmed_at = new Date().toISOString();
                 }
                 
-                // Close the modal after confirmation
+                // Re-render notifications
+                if (this.currentPage === 'notifications') {
+                    this.renderNotifications(this.notifications);
+                }
+                
+                // Update notification count
+                this.fetchNotificationCount();
+                
+                this.showToast('✅ Notification confirmed successfully', 'success');
+                
+                // Close any open modals
                 this.closeConfirmationModal();
-                
-                // Update badge and re-render notifications for instant feedback
-                this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
-                this.renderNotifications(this.notifications);
-                
-                // Send WebSocket message to broadcast the update
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({
-                        type: 'notification_update',
-                        action: 'confirmed',
-                        notificationId: notificationId,
-                        data: {
-                            status: 'confirmed',
-                            confirmed_at: new Date().toISOString()
-                        }
-                    }));
-                }
-                
-                this.showToast('Notification confirmed successfully', 'success');
             } else {
-                // Close modal even if not found
-                this.closeConfirmationModal();
                 throw new Error(result.message || 'Failed to confirm notification');
             }
         } catch (error) {
-            this.closeConfirmationModal();
             console.error('Error confirming notification:', error);
-            this.showToast('Failed to confirm notification', 'error');
+            this.showToast('❌ Failed to confirm notification', 'error');
+            
+            // Re-enable button on error
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Confirm';
+            }
         }
     }
 
@@ -4216,6 +4857,9 @@ class DeliveryApp {
                     }
                 }));
             }
+            
+            // Play warning sound for deletion
+            this.playWarningSound();
             
             this.showToast('Notification deleted successfully! (Removed from both driver and shop views)', 'success');
             console.log('=== EXECUTE DELETE NOTIFICATION END ===');
@@ -4333,36 +4977,95 @@ class DeliveryApp {
         }
     }
     
-    // Play notification sound
+    // Enhanced notification sound system
     async playNotificationSound(strong = false) {
-        if (!this.isAudioEnabled) return;
+            if (!this.isAudioEnabled) return;
+        
         try {
             const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+                const now = ctx.currentTime;
+            
             if (strong) {
-                // Multi-tone, urgent alert sound
-                const gain = ctx.createGain();
-                gain.gain.value = 0.7;
-                gain.connect(ctx.destination);
-                const osc1 = ctx.createOscillator();
-                const osc2 = ctx.createOscillator();
-                osc1.type = 'square';
-                osc2.type = 'triangle';
-                osc1.frequency.setValueAtTime(1040, ctx.currentTime);
-                osc2.frequency.setValueAtTime(660, ctx.currentTime);
-                osc1.connect(gain);
-                osc2.connect(gain);
-                osc1.start();
-                osc2.start();
-                osc1.frequency.linearRampToValueAtTime(880, ctx.currentTime + 0.25);
-                osc2.frequency.linearRampToValueAtTime(440, ctx.currentTime + 0.25);
-                osc1.stop(ctx.currentTime + 0.5);
-                osc2.stop(ctx.currentTime + 0.5);
-                osc1.onended = () => gain.disconnect();
+                // Melodic chime sequence for important notifications (C5, E5, G5)
+                const notes = [523.25, 659.25, 783.99];
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.15);
+                    gain.gain.setValueAtTime(0.3 * this.soundVolume, now + i * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15 + i * 0.15);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + i * 0.15);
+                    osc.stop(now + 0.15 + i * 0.15);
+                });
             } else if (this.notificationAudio) {
+                // Regular notification sound
                 this.notificationAudio();
             }
-        } catch (error) {
+            
+            console.log(`🔊 Played ${strong ? 'strong' : 'regular'} notification sound`);
+            } catch (error) {
             console.warn('⚠️ Could not play notification sound:', error);
+        }
+    }
+
+    // Play confirmation sound for successful actions
+    async playConfirmationSound() {
+        if (!this.isAudioEnabled) return;
+        
+        try {
+            const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Success chime: C5, G5, C6 (major chord progression)
+            const confirmationNotes = [523.25, 783.99, 1046.50];
+            confirmationNotes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + i * 0.1);
+                gain.gain.setValueAtTime(0.25 * this.soundVolume, now + i * 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2 + i * 0.1);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.1);
+                osc.stop(now + 0.2 + i * 0.1);
+            });
+            
+            console.log('🎵 Played confirmation sound');
+        } catch (error) {
+            console.warn('⚠️ Could not play confirmation sound:', error);
+        }
+    }
+
+    // Play delete/warning sound
+    async playWarningSound() {
+        if (!this.isAudioEnabled) return;
+        
+        try {
+            const ctx = this.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            
+            // Warning tone: descending notes (G5, E5, C5)
+            const warningNotes = [783.99, 659.25, 523.25];
+            warningNotes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(freq, now + i * 0.12);
+                gain.gain.setValueAtTime(0.2 * this.soundVolume, now + i * 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15 + i * 0.12);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + i * 0.12);
+                osc.stop(now + 0.15 + i * 0.12);
+            });
+            
+            console.log('⚠️ Played warning sound');
+        } catch (error) {
+            console.warn('⚠️ Could not play warning sound:', error);
         }
     }
     
@@ -4384,6 +5087,13 @@ class DeliveryApp {
             this.ws.onopen = () => {
                 console.log('✅ WebSocket connected');
                 
+                // Reset reconnection attempts on successful connection
+                this.reconnectAttempts = 0;
+                if (this.reconnectTimeout) {
+                    clearTimeout(this.reconnectTimeout);
+                    this.reconnectTimeout = null;
+                }
+                
                 // Authenticate with server
                 this.ws.send(JSON.stringify({
                     type: 'authenticate',
@@ -4401,14 +5111,27 @@ class DeliveryApp {
                 }
             };
             
-            this.ws.onclose = () => {
-                console.log('🔌 WebSocket disconnected');
-                // Attempt to reconnect after 5 seconds
-                setTimeout(() => {
+            this.ws.onclose = (event) => {
+                console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+                
+                // Clear heartbeat interval
+                if (this.sessionHeartbeatInterval) {
+                    clearInterval(this.sessionHeartbeatInterval);
+                    this.sessionHeartbeatInterval = null;
+                }
+                
+                // Implement exponential backoff for reconnection
+                if (!this.reconnectAttempts) this.reconnectAttempts = 0;
+                const backoffTime = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Max 30 seconds
+                
+                console.log(`🔄 Attempting reconnection in ${backoffTime}ms (attempt ${this.reconnectAttempts + 1})`);
+                
+                this.reconnectTimeout = setTimeout(() => {
                     if (this.userId) {
+                        this.reconnectAttempts++;
                         this.connectWebSocket();
                     }
-                }, 5000);
+                }, backoffTime);
             };
             
             this.ws.onerror = (error) => {
@@ -4479,38 +5202,37 @@ class DeliveryApp {
         console.log('🔄 Delivery app received notification update:', data);
         const { action, notificationId, data: updateData } = data;
         
-        const idx = this.notifications.findIndex(n => n.id === notificationId);
-        if (idx !== -1) {
+        // Find and update the notification
+        const notificationIndex = this.notifications.findIndex(n => n.id === notificationId);
+        if (notificationIndex !== -1) {
             if (action === 'confirmed') {
-                this.notifications[idx] = {
-                    ...this.notifications[idx],
-                    status: 'confirmed',
-                    confirmed_at: updateData?.confirmed_at
-                };
-                this.showToast('✅ Notification confirmed', 'success');
+                this.notifications[notificationIndex].status = 'confirmed';
+                this.notifications[notificationIndex].confirmed_at = updateData?.confirmed_at;
+                // Play confirmation sound only - notification popup is handled elsewhere to prevent duplicates
+                this.playConfirmationSound();
             } else if (action === 'deleted') {
-                this.notifications.splice(idx, 1);
-                this.showToast('🗑️ Notification deleted', 'info');
+                // Play warning sound only - notification popup is handled elsewhere to prevent duplicates
+                this.playWarningSound();
+                this.notifications.splice(notificationIndex, 1);
             } else if (action === 'edited') {
-                this.notifications[idx] = {
-                    ...this.notifications[idx],
+                // Play regular notification sound only - notification popup is handled elsewhere to prevent duplicates
+                this.playNotificationSound(false);
+                this.notifications[notificationIndex] = {
+                    ...this.notifications[notificationIndex],
                     ...updateData
                 };
-                this.showToast('✏️ Notification updated', 'info');
             }
-            
-            // Update UI if on notifications page
+
+            // Re-render notifications if on notifications page
             if (this.currentPage === 'notifications') {
                 this.renderNotifications(this.notifications);
             }
-            
+
             // Update notification count
             this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
-            
-            console.log(`🔄 Notification update processed: ${action} for ID ${notificationId}`);
-        } else {
-            console.log(`⚠️ Notification ${notificationId} not found in local array`);
         }
+
+        console.log(`🔄 Notification update processed: ${action} for ID ${notificationId}`);
     }
     
     // Handle notification confirmed
@@ -4579,27 +5301,36 @@ class DeliveryApp {
             // Re-render notifications if on notifications page
             if (this.currentPage === 'notifications') {
                 this.renderNotifications(this.notifications);
+                // Always update menu counts after any notification change
+                setTimeout(() => {
+                    this.updateNotificationsMenuCounts();
+                }, 100);
             }
-            
-            // Show edit toast
-            this.showToast('✏️ Notification has been edited', 'info');
         } else {
             // Add as new notification (real-time push)
-            this.notifications.unshift(notification);
+        this.notifications.unshift(notification);
             console.log('➕ Added new notification');
             
-            if (this.currentPage === 'notifications') {
-                this.renderNotifications(this.notifications);
-            }
+        if (this.currentPage === 'notifications') {
+            this.renderNotifications(this.notifications);
+                // Always update menu counts after any notification change
+                setTimeout(() => {
+                    this.updateNotificationsMenuCounts();
+                }, 100);
+        }
             
             this.playNotificationSound(true); // Use strong sound
-            this.showBrowserNotification(notification);
-            this.showToast(`🔔 New notification from ${notification.shop?.name || 'Shop'}: ${notification.message}`, 'info');
-            this.fetchNotificationCount();
+            this.showBrowserNotification(notification); // Single modern notification popup
+        this.fetchNotificationCount();
         }
         
         // Update notification count
         this.updateNotificationBadge(this.notifications.filter(n => !n.is_read).length);
+        
+        // CRITICAL: Always update menu counts for live updates, even if not on notifications page
+        setTimeout(() => {
+            this.updateNotificationsMenuCounts();
+        }, 150);
     }
     
     // Handle session conflict
@@ -4761,100 +5492,82 @@ class DeliveryApp {
         }, 8000);
     }
     
-    // Show browser notification
+    // Show modern custom notification (replaces browser notifications)
     showBrowserNotification(notification) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-            // Create enhanced notification with better styling
-            const browserNotification = new Notification('🚚 New Delivery Request', {
-                body: `${notification.shop.name}\n${notification.message}`,
-                icon: '/icons/icon-192x192.png',
-                badge: '/icons/icon-192x192.png',
-                tag: 'delivery-notification',
-                requireInteraction: false,
-                silent: false, // Allow system sound
-                vibrate: [200, 100, 200], // Vibration pattern
-                data: {
-                    notificationId: notification.id,
-                    shopName: notification.shop.name,
-                    type: 'delivery'
-                }
-            });
-            
-            // Handle notification click
-            browserNotification.onclick = () => {
-                window.focus();
-                this.navigateToPage('notifications');
-                browserNotification.close();
-                
-                // Highlight the specific notification
-                setTimeout(() => {
-                    const notificationElement = document.querySelector(`[data-notification-id="${notification.id}"]`);
-                    if (notificationElement) {
-                        notificationElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        notificationElement.style.animation = 'highlight-notification 2s ease-in-out';
-                    }
-                }, 500);
-            };
-            
-            // Handle notification close
-            browserNotification.onclose = () => {
-                console.log('Browser notification closed');
-            };
-            
-            // Auto close after 8 seconds (longer for better UX)
-            setTimeout(() => {
-                if (browserNotification) {
-                browserNotification.close();
-                }
-            }, 8000);
-            
-            // Also show a custom in-app notification toast
-            this.showCustomNotificationToast(notification);
-        } else {
-            // Fallback: show custom notification if browser notifications are not available
-            this.showCustomNotificationToast(notification);
-        }
+        console.log('🔔 Showing modern custom notification:', notification);
+        
+        // Always use custom notifications for better control and modern design
+        this.showModernNotificationPopup(notification);
     }
     
-    // Show custom notification toast (Instagram-style)
-    showCustomNotificationToast(notification) {
+    // Show ultra-brief modern notification popup
+    showModernNotificationPopup(notification) {
+        // Prevent duplicate notifications
+        const existingNotification = document.querySelector('.modern-notification-popup');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+        
+        // Determine notification details based on action
+        const action = notification.action || 'new';
+        let accentColor, iconClass, message;
+        
+        switch (action) {
+            case 'confirmed':
+                accentColor = '#10b981';
+                iconClass = 'fas fa-check-circle';
+                message = '✅ Delivery confirmed';
+                break;
+            case 'deleted':
+                accentColor = '#ef4444';
+                iconClass = 'fas fa-trash-alt';
+                message = '🗑️ Notification deleted';
+                break;
+            case 'edited':
+                accentColor = '#3b82f6';
+                iconClass = 'fas fa-edit';
+                message = '✏️ Notification updated';
+                break;
+            default:
+                accentColor = '#667eea';
+                iconClass = 'fas fa-store';
+                message = '🚚 New delivery request';
+        }
+        
         const toast = document.createElement('div');
-        toast.className = 'custom-notification-toast';
+        toast.className = 'modern-notification-popup';
         toast.style.cssText = `
             position: fixed;
-            top: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 16px 20px;
+            top: 16px;
+            right: 16px;
+            left: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.8);
             z-index: 10000;
-            max-width: 350px;
-            min-width: 300px;
-            transform: translateX(400px);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 320px;
+            margin: 0 auto;
+            transform: translateY(-80px) scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
         
         toast.innerHTML = `
-            <div style="display: flex; align-items: flex-start; gap: 12px;">
-                <div style="flex-shrink: 0; width: 40px; height: 40px; background: rgba(255, 255, 255, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                    <i class="fas fa-store" style="font-size: 18px; color: white;"></i>
+            <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; background: ${accentColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="${iconClass}" style="font-size: 16px; color: white;"></i>
                 </div>
                 <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        ${notification.shop.name}
+                    <div style="font-weight: 600; font-size: 14px; color: #1f2937; line-height: 1.3;">
+                        ${message}
                     </div>
-                    <div style="font-size: 13px; line-height: 1.4; opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-                        ${notification.message}
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 1px;">
+                        ${notification.shop?.name || 'Shop'}
                     </div>
-                    <div style="font-size: 11px; opacity: 0.7; margin-top: 6px;">
-                        <i class="fas fa-clock"></i> Just now
                     </div>
-                </div>
-                <button class="notification-close-btn" style="background: none; border: none; color: white; font-size: 16px; cursor: pointer; padding: 4px; opacity: 0.7; transition: opacity 0.2s;">
+                <button class="notification-close-btn" style="background: none; border: none; color: #9ca3af; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 4px; transition: color 0.2s;">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -4864,44 +5577,52 @@ class DeliveryApp {
         
         // Animate in
         setTimeout(() => {
-            toast.style.transform = 'translateX(0)';
-        }, 100);
+            toast.style.transform = 'translateY(0) scale(1)';
+            toast.style.opacity = '1';
+        }, 50);
         
         // Handle close button
         const closeBtn = toast.querySelector('.notification-close-btn');
-        closeBtn.addEventListener('click', () => {
-            toast.style.transform = 'translateX(400px)';
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.parentNode.removeChild(toast);
-                }
-            }, 300);
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.color = '#374151';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.color = '#9ca3af';
+        });
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.closeNotificationPopup(toast);
         });
         
-        // Handle click on notification
-        toast.addEventListener('click', (e) => {
-            if (e.target !== closeBtn && !closeBtn.contains(e.target)) {
+        // Handle click on notification (navigate to notifications)
+        toast.addEventListener('click', () => {
                 this.navigateToPage('notifications');
-                toast.style.transform = 'translateX(400px)';
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                }, 300);
-            }
+            this.closeNotificationPopup(toast);
         });
         
-        // Auto remove after 6 seconds
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.style.transform = 'translateX(400px)';
+        // Auto remove after 4 seconds (shorter for brief notifications)
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                this.closeNotificationPopup(toast);
+            }
+        }, 4000);
+    }
+    
+    // Helper function to close notification popup with animation
+    closeNotificationPopup(toast) {
+        toast.style.transform = 'translateY(-80px) scale(0.9)';
+        toast.style.opacity = '0';
                 setTimeout(() => {
                     if (toast.parentNode) {
                         toast.parentNode.removeChild(toast);
                     }
                 }, 300);
             }
-        }, 6000);
+    
+    // Keep original function as fallback
+    showCustomNotificationToast(notification) {
+        // Use the new modern popup instead
+        this.showModernNotificationPopup(notification);
     }
     
     // Request notification permission
@@ -5064,54 +5785,460 @@ class DeliveryApp {
     }
     
     // Toggle notification sound
-    toggleNotificationSound() {
+    async toggleNotificationSound() {
         this.isAudioEnabled = !this.isAudioEnabled;
         localStorage.setItem('notificationSound', this.isAudioEnabled.toString());
+        
+        // Save to database
+        try {
+            await this.updateUserSettings({
+                notificationSettings: {
+                    soundEnabled: this.isAudioEnabled,
+                    browserEnabled: 'Notification' in window ? Notification.permission === 'granted' : false
+                }
+            });
         
         if (this.isAudioEnabled) {
             this.showToast('Notification sound enabled', 'success');
             this.playNotificationSound(); // Test sound
         } else {
             this.showToast('Notification sound disabled', 'info');
+            }
+        } catch (error) {
+            console.error('Error updating notification settings:', error);
+            this.showToast('Sound setting updated locally (database error)', 'warning');
+            
+            if (this.isAudioEnabled) {
+                this.playNotificationSound(); // Test sound
+            }
+        }
+    }
+
+    // Test different sound types for user feedback
+    testSounds() {
+        if (!this.isAudioEnabled) {
+            this.showToast('Enable sounds first to test them', 'warning');
+            return;
+        }
+        
+        // Play all sound types in sequence
+        setTimeout(() => this.playNotificationSound(false), 0);
+        setTimeout(() => this.playConfirmationSound(), 800);
+        setTimeout(() => this.playWarningSound(), 1600);
+        
+        this.showToast('🎵 Playing sound test sequence', 'info');
+    }
+
+    // Update sound volume
+    updateSoundVolume(volume) {
+        this.soundVolume = Math.max(0, Math.min(1, volume)); // Clamp between 0 and 1
+        localStorage.setItem('soundVolume', this.soundVolume.toString());
+        
+        // Test the new volume with a notification sound
+        if (this.isAudioEnabled) {
+            this.playNotificationSound(false);
         }
     }
 
     setupNotificationsMenu() {
+        // Create the redesigned notifications menu button and dropdown
+        console.log('🔧 Setting up notifications menu...');
+        console.log('Current page:', this.currentPage);
+        console.log('Notifications loaded:', this.notifications ? this.notifications.length : 'none');
+        console.log('Is notifications page visible?', document.getElementById('notifications-page')?.style.display !== 'none');
+        
+        // Always create the menu, even if notifications aren't loaded yet (will show 0 counts)
+        this.createNotificationsMenu();
+        this.bindMenuEvents();
+        
+        // If notifications aren't loaded yet, try again after loading
+        if (!this.notifications || this.notifications.length === 0) {
+            console.log('⏳ Notifications not loaded yet, will refresh menu after loading...');
+        }
+    }
+
+    updateNotificationsMenuCounts() {
+        // Update menu counts without recreating the entire menu (faster and prevents disappearing)
+        if (!this.currentMenuContainer) {
+            console.log('🔄 No current menu container, creating new menu...');
+            this.createNotificationsMenu();
+            this.bindMenuEvents();
+            return;
+        }
+
+        const notifications = this.notifications || [];
+        const pendingCount = notifications.filter(n => n && (n.status === 'pending' || !n.status)).length;
+        const confirmedCount = notifications.filter(n => n && n.status === 'confirmed').length;
+        
+        console.log('🔄 Updating menu counts - Pending:', pendingCount, 'Confirmed:', confirmedCount);
+        
+        // Update the dropdown content with new counts
+        const quickActionsText = this.currentMenuContainer.querySelector('p');
+        if (quickActionsText) {
+            quickActionsText.textContent = `${pendingCount} pending • ${confirmedCount} confirmed`;
+        }
+        
+        // Update confirm button
+        const confirmBtn = this.currentMenuContainer.querySelector('#complete-all-notifications');
+        if (confirmBtn) {
+            const confirmText = confirmBtn.querySelector('div:last-child div:first-child');
+            if (confirmText) {
+                confirmText.textContent = `Confirm Pending (${pendingCount})`;
+            }
+            // Update disabled state
+            if (pendingCount === 0) {
+                confirmBtn.style.opacity = '0.5';
+                confirmBtn.style.cursor = 'not-allowed';
+            } else {
+                confirmBtn.style.opacity = '1';
+                confirmBtn.style.cursor = 'pointer';
+            }
+        }
+        
+        // Update delete button
+        const deleteBtn = this.currentMenuContainer.querySelector('#delete-all-notifications');
+        if (deleteBtn) {
+            const deleteText = deleteBtn.querySelector('div:last-child div:first-child');
+            if (deleteText) {
+                deleteText.textContent = `Delete Confirmed (${confirmedCount})`;
+            }
+            // Update disabled state
+            if (confirmedCount === 0) {
+                deleteBtn.style.opacity = '0.5';
+                deleteBtn.style.cursor = 'not-allowed';
+            } else {
+                deleteBtn.style.opacity = '1';
+                deleteBtn.style.cursor = 'pointer';
+            }
+        }
+    }
+
+    bindMenuEvents() {
         const menuBtn = document.getElementById('notifications-menu-btn');
         const menu = document.getElementById('notifications-menu');
         
-        if (!menuBtn || !menu) return;
+        if (!menuBtn || !menu) {
+            console.log('❌ Menu elements not found, retrying...');
+            return;
+        }
         
-        // Toggle menu
+        // Toggle menu with animation
         menuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            menu.classList.toggle('show');
+            const isOpen = menu.classList.contains('show');
+            
+            if (isOpen) {
+                this.closeNotificationsMenu();
+            } else {
+                this.openNotificationsMenu();
+            }
         });
         
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
             if (!menu.contains(e.target) && !menuBtn.contains(e.target)) {
-                menu.classList.remove('show');
+                this.closeNotificationsMenu();
             }
         });
         
         // Refresh notifications
-        document.getElementById('refresh-notifications').addEventListener('click', () => {
-            this.loadNotifications();
-            menu.classList.remove('show');
-        });
+        const refreshBtn = document.getElementById('refresh-notifications');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+                refreshBtn.disabled = true;
+                
+                await this.loadNotifications();
+                
+                refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+                refreshBtn.disabled = false;
+                this.closeNotificationsMenu();
+            });
+        }
         
-        // Complete all notifications
-        document.getElementById('complete-all-notifications').addEventListener('click', () => {
+        // Complete all pending notifications
+        const completeBtn = document.getElementById('complete-all-notifications');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', () => {
             this.confirmAllNotifications();
-            menu.classList.remove('show');
-        });
+                this.closeNotificationsMenu();
+            });
+        }
         
-        // Delete all notifications
-        document.getElementById('delete-all-notifications').addEventListener('click', () => {
+        // Delete all confirmed notifications
+        const deleteBtn = document.getElementById('delete-all-notifications');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
             this.deleteAllNotifications();
+                this.closeNotificationsMenu();
+            });
+        }
+    }
+
+    createNotificationsMenu() {
+        // Create modern notifications menu button and dropdown
+        console.log('🔧 Starting createNotificationsMenu...');
+        
+        // Find the notifications-dashboard header (created by renderNotifications)
+        let notificationsHeader = document.querySelector('.notifications-dashboard .dashboard-header .header-left');
+        
+        if (!notificationsHeader) {
+            console.log('❌ Dashboard header not found, notifications may not be loaded yet');
+            return;
+        }
+        
+        console.log('📍 Found dashboard header:', !!notificationsHeader);
+        
+        // Remove existing menu if any
+        const existingMenu = document.getElementById('notifications-menu-container');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // Ensure notifications are loaded before counting
+        const notifications = this.notifications || [];
+        console.log('📊 Creating menu with notifications:', notifications.length, notifications);
+        
+        // Get notification counts with better filtering
+        const pendingCount = notifications.filter(n => n && (n.status === 'pending' || !n.status)).length;
+        const confirmedCount = notifications.filter(n => n && n.status === 'confirmed').length;
+        
+        console.log('📊 Notification counts - Pending:', pendingCount, 'Confirmed:', confirmedCount);
+        
+        // Create the menu container
+        const menuContainer = document.createElement('div');
+        menuContainer.id = 'notifications-menu-container';
+        menuContainer.style.cssText = `
+            position: absolute;
+            top: 8px;
+            right: 15px;
+            z-index: 1000;
+        `;
+        
+        console.log('✅ Created menu container with fixed positioning');
+        
+        menuContainer.innerHTML = `
+            <!-- Modern Menu Button -->
+            <button id="notifications-menu-btn" style="
+                background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+                border: none;
+                border-radius: 16px;
+                color: white;
+                padding: 12px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 8px 25px rgba(255, 107, 53, 0.3);
+                transition: all 0.3s ease;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                backdrop-filter: blur(10px);
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 35px rgba(255, 107, 53, 0.4)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 25px rgba(255, 107, 53, 0.3)'">
+                <i class="fas fa-cog"></i>
+                <span>Actions</span>
+                <i class="fas fa-chevron-down" style="font-size: 10px; transition: transform 0.3s ease;"></i>
+            </button>
+            
+            <!-- Modern Dropdown Menu -->
+            <div id="notifications-menu" style="
+                position: absolute;
+                top: 55px;
+                right: 0;
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+                min-width: 280px;
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(-10px) scale(0.95);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                backdrop-filter: blur(20px);
+                overflow: hidden;
+            ">
+                <!-- Header -->
+                <div style="
+                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    padding: 16px 20px;
+                    border-bottom: 1px solid #e2e8f0;
+                ">
+                    <h4 style="
+                        margin: 0;
+                        font-size: 16px;
+                        color: #1e293b;
+                        font-weight: 600;
+                    ">Quick Actions</h4>
+                    <p style="
+                        margin: 4px 0 0 0;
+                        font-size: 12px;
+                        color: #64748b;
+                    ">${pendingCount} pending • ${confirmedCount} confirmed</p>
+                </div>
+                
+                <!-- Menu Items -->
+                <div style="padding: 8px;">
+                    <button id="refresh-notifications" style="
+                        width: 100%;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        padding: 12px 16px;
+                        background: none;
+                        border: none;
+                        border-radius: 12px;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        font-size: 14px;
+                        color: #475569;
+                        text-align: left;
+                    " onmouseover="this.style.background='#f1f5f9'; this.style.color='#1e293b'"
+                       onmouseout="this.style.background='none'; this.style.color='#475569'">
+                        <div style="
+                            width: 32px;
+                            height: 32px;
+                            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 12px;
+                        ">
+                            <i class="fas fa-sync-alt"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 500;">Refresh</div>
+                            <div style="font-size: 12px; color: #64748b;">Reload all notifications</div>
+                        </div>
+                    </button>
+                    
+                    <button id="complete-all-notifications" style="
+                        width: 100%;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        padding: 12px 16px;
+                        background: none;
+                        border: none;
+                        border-radius: 12px;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        font-size: 14px;
+                        color: #475569;
+                        text-align: left;
+                        ${pendingCount === 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+                    " onmouseover="if(${pendingCount} > 0) { this.style.background='#f0fdf4'; this.style.color='#15803d'; }"
+                       onmouseout="this.style.background='none'; this.style.color='#475569';">
+                        <div style="
+                            width: 32px;
+                            height: 32px;
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 12px;
+                        ">
+                            <i class="fas fa-check-double"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 500;">Confirm Pending (${pendingCount})</div>
+                            <div style="font-size: 12px; color: #64748b;">Confirm all pending orders</div>
+                        </div>
+                    </button>
+                    
+                    <button id="delete-all-notifications" style="
+                        width: 100%;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        padding: 12px 16px;
+                        background: none;
+                        border: none;
+                        border-radius: 12px;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        font-size: 14px;
+                        color: #475569;
+                        text-align: left;
+                        ${confirmedCount === 0 ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+                    " onmouseover="if(${confirmedCount} > 0) { this.style.background='#fef2f2'; this.style.color='#dc2626'; }"
+                       onmouseout="this.style.background='none'; this.style.color='#475569';">
+                        <div style="
+                            width: 32px;
+                            height: 32px;
+                            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-size: 12px;
+                        ">
+                            <i class="fas fa-trash-alt"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 500;">Delete Confirmed (${confirmedCount})</div>
+                            <div style="font-size: 12px; color: #64748b;">Remove completed orders</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        // Insert into the dashboard header (next to the notifications title)
+        const dashboardHeader = document.querySelector('.notifications-dashboard .dashboard-header');
+        if (dashboardHeader) {
+            dashboardHeader.appendChild(menuContainer);
+            console.log('✅ Menu container added to dashboard header');
+        } else {
+            // Fallback to header-left if dashboard-header not found
+            notificationsHeader.appendChild(menuContainer);
+            console.log('✅ Menu container added to header-left');
+        }
+        
+        console.log('📍 Header element:', notificationsHeader);
+        console.log('📍 Menu container:', menuContainer);
+        
+        // Store reference for live updates
+        this.currentMenuContainer = menuContainer;
+    }
+
+    openNotificationsMenu() {
+        const menu = document.getElementById('notifications-menu');
+        const btn = document.getElementById('notifications-menu-btn');
+        const chevron = btn?.querySelector('.fa-chevron-down');
+        
+        if (menu) {
+            menu.style.opacity = '1';
+            menu.style.visibility = 'visible';
+            menu.style.transform = 'translateY(0) scale(1)';
+            menu.classList.add('show');
+        }
+        
+        if (chevron) {
+            chevron.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    closeNotificationsMenu() {
+        const menu = document.getElementById('notifications-menu');
+        const btn = document.getElementById('notifications-menu-btn');
+        const chevron = btn?.querySelector('.fa-chevron-down');
+        
+        if (menu) {
+            menu.style.opacity = '0';
+            menu.style.visibility = 'hidden';
+            menu.style.transform = 'translateY(-10px) scale(0.95)';
             menu.classList.remove('show');
-        });
+        }
+        
+        if (chevron) {
+            chevron.style.transform = 'rotate(0deg)';
+        }
     }
 
     // Add or ensure this method exists in the class
@@ -5178,107 +6305,133 @@ class DeliveryApp {
         }
     }
 
-    // Add or ensure this method exists in the class
+    // Confirm only pending notifications
     async confirmAllNotifications() {
         try {
             if (!this.currentUser || !this.currentUser.id) {
                 console.error('No user ID available');
                 return;
             }
-            if (!confirm('Are you sure you want to confirm all pending notifications?')) {
+            
+            // Filter only pending notifications
+            const pendingNotifications = this.notifications.filter(n => n.status === 'pending');
+            
+            if (pendingNotifications.length === 0) {
+                this.showToast('No pending notifications to confirm', 'info');
                 return;
             }
-            this.showLoadingOverlay('Confirming all notifications...');
-            const response = await fetch(`/api/driver/${this.currentUser.id}/notifications/complete-all`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
+            
+            if (!confirm(`Are you sure you want to confirm ${pendingNotifications.length} pending notifications?`)) {
+                return;
+            }
+            
+            this.showLoadingOverlay(`Processing ${pendingNotifications.length} notifications...`);
+            
+            // Fast batch processing - update all locally first
+            pendingNotifications.forEach(notification => {
+                const localNotification = this.notifications.find(n => n.id === notification.id);
+                if (localNotification) {
+                    localNotification.status = 'confirmed';
+                    localNotification.confirmed_at = new Date().toISOString();
                 }
             });
-            if (!response.ok) {
-                this.hideLoadingOverlay();
-                this.showToast('Server error: Could not confirm all notifications', 'error');
-                return;
-            }
-            let result;
+            
+            // Send batch request to server (if endpoint exists) or individual quick requests
+            let successCount = pendingNotifications.length;
+            
             try {
-                result = await response.json();
-            } catch (e) {
-                this.hideLoadingOverlay();
-                this.showToast('Unexpected server response. Please try again.', 'error');
-                return;
+                // Quick individual requests without waiting for each one
+                const confirmPromises = pendingNotifications.map(notification =>
+                    fetch(`/api/driver/${this.currentUser.id}/notifications/${notification.id}/confirm`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' }
+                    }).catch(err => console.log('Quick confirm error:', err))
+                );
+                
+                // Don't wait for all to complete - optimistic update
+                Promise.all(confirmPromises);
+                
+            } catch (error) {
+                console.log('Batch confirm error:', error);
             }
-            if (result.success) {
-                this.showToast('All notifications confirmed successfully', 'success');
-            } else {
-                throw new Error(result.message || 'Failed to confirm all notifications');
-            }
-            await this.loadNotifications();
+            
             this.hideLoadingOverlay();
+            
+            // Single success message
+            this.showModernToast(`✅ Mass Confirmation Complete - ${successCount} notifications confirmed`, 'success');
+            await this.playConfirmationSound();
+            
+            // Refresh the notifications display
+            this.renderNotifications(this.notifications);
+            
+            // Update menu with new counts (faster than recreating)
+            setTimeout(() => {
+                this.updateNotificationsMenuCounts();
+            }, 100);
+            
         } catch (error) {
             this.hideLoadingOverlay();
             console.error('Error confirming all notifications:', error);
-            this.showToast('Failed to confirm all notifications', 'error');
+            this.showToast('Failed to confirm notifications', 'error');
         }
     }
 
-    // Add or ensure this method exists in the class
+    // Delete only confirmed notifications  
     async deleteAllNotifications() {
         try {
             if (!this.currentUser || !this.currentUser.id) {
                 console.error('No user ID available');
                 return;
             }
-            if (!confirm('Are you sure you want to delete all your notifications? This action cannot be undone.')) {
+            
+            // Filter only confirmed notifications
+            const confirmedNotifications = this.notifications.filter(n => n.status === 'confirmed');
+            
+            if (confirmedNotifications.length === 0) {
+                this.showToast('No confirmed notifications to delete', 'info');
                 return;
             }
-            this.showLoadingOverlay('Deleting all notifications...');
-            // Get all notifications for this user
-            const response = await fetch(`/api/driver/${this.currentUser.id}/notifications`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            const result = await response.json();
-            if (!result.success) {
-                this.hideLoadingOverlay();
-                throw new Error(result.message || 'Failed to fetch notifications');
-            }
-            const notifications = result.notifications;
-            if (notifications.length === 0) {
-                this.hideLoadingOverlay();
-                this.showToast('No notifications to delete', 'info');
+            
+            if (!confirm(`Are you sure you want to delete ${confirmedNotifications.length} confirmed notifications? This action cannot be undone.`)) {
                 return;
             }
-            // Delete each notification
-            let successCount = 0;
-            let errorCount = 0;
-            for (const notification of notifications) {
-                try {
-                    const deleteResponse = await fetch(`/api/driver/${this.currentUser.id}/notifications/${notification.id}`, {
+            
+            this.showLoadingOverlay(`Processing ${confirmedNotifications.length} notifications...`);
+            
+            let successCount = confirmedNotifications.length;
+            
+            // Fast batch processing - remove all locally first
+            this.notifications = this.notifications.filter(n => n.status !== 'confirmed');
+            
+            try {
+                // Quick individual requests without waiting for each one
+                const deletePromises = confirmedNotifications.map(notification =>
+                    fetch(`/api/driver/${this.currentUser.id}/notifications/${notification.id}`, {
                         method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const deleteResult = await deleteResponse.json();
-                    if (deleteResult.success) {
-                        successCount++;
-                    } else {
-                        errorCount++;
-                    }
+                        headers: { 'Content-Type': 'application/json' }
+                    }).catch(err => console.log('Quick delete error:', err))
+                );
+                
+                // Don't wait for all to complete - optimistic update
+                Promise.all(deletePromises);
+                
                 } catch (error) {
-                    errorCount++;
-                }
+                console.log('Batch delete error:', error);
             }
-            if (errorCount === 0) {
-                this.showToast(`Successfully deleted all ${successCount} notifications`, 'success');
-            } else {
-                this.showToast(`Deleted ${successCount} notifications, ${errorCount} failed`, 'warning');
-            }
-            await this.loadNotifications();
+            
             this.hideLoadingOverlay();
+            
+            // Single success message
+            this.showModernToast(`🗑️ Mass Deletion Complete - ${successCount} notifications removed`, 'success');
+            
+            // Refresh the notifications display
+            this.renderNotifications(this.notifications);
+            
+            // Update menu with new counts (faster than recreating)
+            setTimeout(() => {
+                this.updateNotificationsMenuCounts();
+            }, 100);
+            
         } catch (error) {
             this.hideLoadingOverlay();
             console.error('Error deleting all notifications:', error);
@@ -5394,6 +6547,29 @@ class DeliveryApp {
                         font-size: 18px;
                         font-weight: 600;
                     ">Edit Notification</h3>
+                    
+                    <!-- Close Button -->
+                    <button id="edit-notification-close" style="
+                        position: absolute;
+                        top: 20px;
+                        right: 20px;
+                        width: 32px;
+                        height: 32px;
+                        background: rgba(255, 255, 255, 0.2);
+                        border: none;
+                        border-radius: 50%;
+                        color: white;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                        font-weight: bold;
+                        transition: background-color 0.2s ease;
+                        z-index: 1;
+                    " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'">
+                        ×
+                    </button>
                 </div>
                 
                 <!-- Content -->
@@ -5474,9 +6650,17 @@ class DeliveryApp {
         const modal = document.getElementById('edit-notification-modal');
         const cancelBtn = document.getElementById('edit-notification-cancel');
         const saveBtn = document.getElementById('edit-notification-save');
+        const closeBtn = document.getElementById('edit-notification-close');
         
         console.log('Cancel button found:', !!cancelBtn);
         console.log('Save button found:', !!saveBtn);
+        console.log('Close button found:', !!closeBtn);
+        
+        // Function to close modal
+        const closeModal = () => {
+            modal.remove();
+            document.body.style.overflow = 'auto';
+        };
         
         // Bind events to the modal buttons
         if (cancelBtn) {
@@ -5484,8 +6668,16 @@ class DeliveryApp {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Cancel button clicked');
-                modal.remove();
-                document.body.style.overflow = 'auto';
+                closeModal();
+            });
+        }
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Close button clicked');
+                closeModal();
             });
         }
         
@@ -5500,8 +6692,7 @@ class DeliveryApp {
                     return;
                 }
                 this.updateNotificationMessage(notificationId, newMessage);
-                modal.remove();
-                document.body.style.overflow = 'auto';
+                closeModal();
             });
         }
         
@@ -5509,8 +6700,7 @@ class DeliveryApp {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 console.log('Background clicked, closing modal');
-                modal.remove();
-                document.body.style.overflow = 'auto';
+                closeModal();
             }
         });
         
@@ -5790,6 +6980,59 @@ class DeliveryApp {
             this.debugModalVisibility('delete-notification-modal');
         }, 100);
     }
+
+    handlePaymentMethodChange() {
+        const paymentMethod = document.getElementById('edit-order-payment')?.value;
+        const priceInput = document.getElementById('edit-order-price');
+        const priceContainer = priceInput?.parentElement;
+        
+        if (priceInput && priceContainer) {
+            const existingInfo = priceContainer.querySelector('small');
+            
+            if (paymentMethod === 'paid') {
+                // Disable price editing for paid orders
+                priceInput.disabled = true;
+                priceInput.style.backgroundColor = '#f3f4f6';
+                priceInput.style.cursor = 'not-allowed';
+                
+                // Clear placeholder when paid is selected
+                priceInput.placeholder = '';
+                
+                // If price is currently empty, set it to 0 for paid orders
+                if (!priceInput.value || priceInput.value.trim() === '') {
+                    priceInput.value = '0.00';
+                }
+                
+                // Add info message if not already present
+                if (!existingInfo) {
+                    const infoMessage = document.createElement('small');
+                    infoMessage.style.cssText = 'color: #6b7280; font-size: 12px; margin-top: 4px; display: block;';
+                    infoMessage.innerHTML = '<i class="fas fa-info-circle"></i> Price is locked when payment is marked as "Paid" - order is already settled';
+                    priceContainer.appendChild(infoMessage);
+                }
+            } else {
+                // Enable price editing for cash orders
+                priceInput.disabled = false;
+                priceInput.style.backgroundColor = 'white';
+                priceInput.style.cursor = 'text';
+                
+                // Restore placeholder for cash orders
+                priceInput.placeholder = 'Enter order price';
+                
+                // Clear 0.00 if it was set automatically and restore to empty for cash
+                if (priceInput.value === '0.00') {
+                    priceInput.value = '';
+                }
+                
+                // Remove info message if present
+                if (existingInfo) {
+                    existingInfo.remove();
+                }
+            }
+        }
+    }
+
+
 
     handleOrderUpdate(data) {
         const { action, order } = data;

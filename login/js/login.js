@@ -48,7 +48,7 @@ class LoginApp {
             if (userType === 'shop') {
                 window.location.href = '/shop';
             } else {
-                window.location.href = '/app';
+            window.location.href = '/app';
             }
         }
     }

@@ -220,7 +220,7 @@ function broadcastNotificationCount(userId, userType, count) {
     });
 }
 
-// Handle real-time notification updates
+// Enhanced real-time notification updates with cross-platform support
 function handleNotificationUpdate(ws, data) {
     const client = clients.get(ws);
     if (!client) {
@@ -230,36 +230,68 @@ function handleNotificationUpdate(ws, data) {
     
     console.log(`🔄 Processing notification update for ${client.userType} ${client.userId}:`, data.action);
     
-    // Broadcast the update to all connected clients of the same type
+    // Broadcast the update to all connected clients of the same type and user
+    let updatesSent = 0;
     clients.forEach((otherClient, otherWs) => {
         if (otherWs.readyState === WebSocket.OPEN && 
             otherClient.userType === client.userType &&
             otherClient.userId === client.userId) {
             
-            otherWs.send(JSON.stringify({
-                type: 'notification_update',
-                action: data.action,
-                notificationId: data.notificationId,
-                data: data.data
-            }));
+            try {
+                otherWs.send(JSON.stringify({
+                    type: 'notification_update',
+                    action: data.action,
+                    notificationId: data.notificationId,
+                    data: data.data,
+                    timestamp: new Date().toISOString()
+                }));
+                updatesSent++;
+            } catch (error) {
+                console.error(`❌ Failed to send notification update to ${otherClient.userType} ${otherClient.userId}:`, error);
+            }
         }
     });
+    
+    console.log(`📡 Notification update broadcasted to ${updatesSent} clients`);
 }
 
-// Broadcast notification update to all relevant clients
+// Enhanced broadcast notification update with reliability improvements
 function broadcastNotificationUpdate(userId, userType, action, notificationId, data) {
+    let updatesSent = 0;
+    let failedSends = 0;
+    
+    console.log(`📡 Broadcasting ${action} update for notification ${notificationId} to ${userType} ${userId}`);
+    
     clients.forEach((client, ws) => {
         if (ws.readyState === WebSocket.OPEN && 
             client.userId === userId && 
             client.userType === userType) {
-            ws.send(JSON.stringify({
-                type: 'notification_update',
-                action: action,
-                notificationId: notificationId,
-                data: data
-            }));
+            
+            try {
+                ws.send(JSON.stringify({
+                    type: 'notification_update',
+                    action: action,
+                    notificationId: notificationId,
+                    data: data,
+                    timestamp: new Date().toISOString(),
+                    reliability: true
+                }));
+                updatesSent++;
+            } catch (error) {
+                console.error(`❌ Failed to send notification update to ${userType} ${userId}:`, error);
+                failedSends++;
+                
+                // Remove dead connection
+                if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+                    console.log(`🧹 Cleaning up dead connection for ${userType} ${userId}`);
+                    clients.delete(ws);
+                }
+            }
         }
     });
+    
+    console.log(`✅ Notification update sent to ${updatesSent} clients, ${failedSends} failed`);
+    return { sent: updatesSent, failed: failedSends };
 }
 
 // Supabase setup
@@ -570,9 +602,9 @@ app.get('/api/admin/shop-accounts', async (req, res) => {
 // POST /api/admin/shop-accounts - Create a new shop account
 app.post('/api/admin/shop-accounts', async (req, res) => {
     try {
-        const { email, password, shop_name, contact_person, phone, address, afm, status } = req.body;
-        if (!email || !password || !shop_name || !afm) {
-            return res.status(400).json({ success: false, message: 'Email, password, shop name, and AFM are required' });
+        const { email, password, shop_name, contact_person, phone, address, afm, category_id, status } = req.body;
+        if (!email || !password || !shop_name || !afm || !category_id) {
+            return res.status(400).json({ success: false, message: 'Email, password, shop name, AFM, and category are required' });
         }
         // Create user in users table (user_type = 'shop')
         const { data: user, error: userError } = await supabase
@@ -586,7 +618,7 @@ app.post('/api/admin/shop-accounts', async (req, res) => {
         // Create shop account
         const { data: shop, error: shopError } = await supabase
             .from('shop_accounts')
-            .insert([{ email, password, shop_name, contact_person, phone, address, afm, status }])
+            .insert([{ email, password, shop_name, contact_person, phone, address, afm, category_id: parseInt(category_id), status }])
             .select('*')
             .single();
         if (shopError || !shop) {
@@ -603,8 +635,8 @@ app.post('/api/admin/shop-accounts', async (req, res) => {
 app.put('/api/admin/shop-accounts/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { shop_name, contact_person, phone, address, afm, status } = req.body;
-        const updates = { shop_name, contact_person, phone, address, afm, status, updated_at: new Date().toISOString() };
+        const { shop_name, contact_person, phone, address, afm, category_id, status } = req.body;
+        const updates = { shop_name, contact_person, phone, address, afm, category_id: category_id ? parseInt(category_id) : undefined, status, updated_at: new Date().toISOString() };
         const { data, error } = await supabase
             .from('shop_accounts')
             .update(updates)
@@ -1183,12 +1215,19 @@ app.get('/api/user/shops', authenticateUser, async (req, res) => {
 // POST /api/user/shops - Add a new shop for a user (driver) - FIXED with proper user filtering
 app.post('/api/user/shops', authenticateUser, async (req, res) => {
     try {
-        const { name } = req.body;
+        const { name, category_id } = req.body;
         
         if (!name) {
             return res.status(400).json({
                 success: false,
                 message: 'Shop name is required'
+            });
+        }
+        
+        if (!category_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Category is required'
             });
         }
         
@@ -1214,9 +1253,10 @@ app.post('/api/user/shops', authenticateUser, async (req, res) => {
             .from('partner_shops')
             .insert([{
                 user_id: req.userId,
-                name: name
+                name: name,
+                category_id: parseInt(category_id)
             }])
-            .select('id, name, created_at')
+            .select('id, name, category_id, created_at')
             .single();
         
         if (error) {
@@ -1278,14 +1318,21 @@ app.delete('/api/user/shops/:id', authenticateUser, async (req, res) => {
 app.put('/api/partner_shops/:id', authenticateUser, async (req, res) => {
     try {
         const { id } = req.params;
-        const { name } = req.body;
+        const { name, category_id } = req.body;
         
-        console.log('Updating shop', id, 'for user', req.userId, 'New name:', name);
+        console.log('Updating shop', id, 'for user', req.userId, 'New name:', name, 'Category ID:', category_id);
         
         if (!name) {
             return res.status(400).json({
                 success: false,
                 message: 'Shop name is required'
+            });
+        }
+        
+        if (!category_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Category is required'
             });
         }
         
@@ -1312,13 +1359,13 @@ app.put('/api/partner_shops/:id', authenticateUser, async (req, res) => {
             });
         }
         
-        // Update the shop name
+        // Update the shop name and category
         const { data, error } = await supabase
             .from('partner_shops')
-            .update({ name: name })
+            .update({ name: name, category_id: parseInt(category_id) })
             .eq('id', id)
             .eq('user_id', req.userId)
-            .select('id, name, created_at')
+            .select('id, name, category_id, created_at')
             .single();
         
         if (error) {
@@ -1378,6 +1425,7 @@ app.get('/api/user/orders', authenticateUser, async (req, res) => {
                 price: order.price,
                 earnings: order.earnings,
                 notes: order.notes,
+                address: order.address,
                 created_at: order.created_at,
                 shop_name: shop?.name || 'Unknown Shop'
             };
@@ -1402,9 +1450,9 @@ app.get('/api/user/orders', authenticateUser, async (req, res) => {
 // POST /api/user/orders - Add a new order for a user - FIXED with proper user filtering
 app.post('/api/user/orders', authenticateUser, async (req, res) => {
     try {
-        const { shop_id, price, earnings, notes } = req.body;
+        const { shop_id, price, earnings, notes, address } = req.body;
         
-        console.log('Received order data:', { shop_id, price, earnings, notes, userId: req.userId });
+        console.log('Received order data:', { shop_id, price, earnings, notes, address, userId: req.userId });
         
         if (!shop_id || !price || !earnings) {
             return res.status(400).json({
@@ -1439,7 +1487,8 @@ app.post('/api/user/orders', authenticateUser, async (req, res) => {
                 shop_id: parseInt(shop_id),
                 price: parseFloat(price),
                 earnings: parseFloat(earnings),
-                notes: notes || ''
+                notes: notes || '',
+                address: address || ''
             }])
             .select('*')
             .single();
@@ -1455,6 +1504,7 @@ app.post('/api/user/orders', authenticateUser, async (req, res) => {
             price: orderData.price,
             earnings: orderData.earnings,
             notes: orderData.notes,
+            address: orderData.address,
             created_at: orderData.created_at,
             shop_name: shopData.name
         };
@@ -2228,7 +2278,7 @@ app.put('/api/driver/:driverId/notifications/:notificationId/confirm', async (re
             clients.forEach((client, ws) => {
                 if (ws.readyState === WebSocket.OPEN && 
                     client.userType === 'shop' && 
-                    client.shopId === notification.shop_id) {
+                    parseInt(client.shopId) === parseInt(notification.shop_id)) {
                     ws.send(JSON.stringify({
                         type: 'notification_update',
                         action: 'confirmed',
@@ -2319,7 +2369,7 @@ app.put('/api/driver/:driverId/notifications/:notificationId', async (req, res) 
             clients.forEach((client, ws) => {
                 if (ws.readyState === WebSocket.OPEN && 
                     client.userType === 'shop' && 
-                    client.shopId === notification.shop_id) {
+                    parseInt(client.shopId) === parseInt(notification.shop_id)) {
                     ws.send(JSON.stringify({
                         type: 'notification_update',
                         action: 'edited',
@@ -2776,7 +2826,7 @@ app.delete('/api/driver/:driverId/notifications/:notificationId', async (req, re
             clients.forEach((client, ws) => {
                 if (ws.readyState === WebSocket.OPEN && 
                     client.userType === 'shop' && 
-                    client.shopId === deletedNotification.shop_id) {
+                    parseInt(client.shopId) === parseInt(deletedNotification.shop_id)) {
                     ws.send(JSON.stringify({
                         type: 'notification_update',
                         action: 'deleted',
@@ -2862,7 +2912,7 @@ app.get('/api/user/settings', authenticateUser, async (req, res) => {
 
         // Set user context for RLS policies
         await supabase.rpc('set_request_user_id', { user_id: req.user.id });
-        
+
         // Use raw SQL query to bypass RLS
         const { data, error } = await supabase
             .from('user_settings')
@@ -2962,9 +3012,39 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
             throw fetchError;
         }
         
-        // If settings don't exist or we got RLS error, just return the updates
-        // This allows the client to work even if database operations fail
-        if (!existingSettings || fetchError) {
+        // If settings don't exist, create them with the updates
+        if (!existingSettings) {
+            console.log('📝 Creating new settings for user', req.user.id);
+            
+            const newSettings = {
+                user_id: req.user.id,
+                earnings_per_order: updates.earnings_per_order || 1.50,
+                notificationSettings: updates.notificationSettings || {
+                    soundEnabled: true,
+                    browserEnabled: false
+                },
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+            
+            const { data: createdData, error: createError } = await supabase
+                .from('user_settings')
+                .insert(newSettings)
+                .select()
+                .single();
+            
+            if (createError) {
+                console.error('Error creating settings:', createError);
+                // Return the settings anyway for client-side operation
+                return res.json(newSettings);
+            }
+            
+            console.log('✅ Settings created for user', req.user.id);
+            return res.json(createdData);
+        }
+        
+        // If we got RLS error, just return the updates
+        if (fetchError) {
             return res.json({
                 ...updates,
                 user_id: req.user.id,
@@ -2972,13 +3052,22 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
             });
         }
         
+        // Prepare updates object - make sure we only update valid columns
+        const validUpdates = {};
+        if (updates.earnings_per_order !== undefined) {
+            validUpdates.earnings_per_order = parseFloat(updates.earnings_per_order);
+        }
+        if (updates.notificationSettings !== undefined) {
+            validUpdates.notificationSettings = updates.notificationSettings;
+        }
+        validUpdates.updated_at = new Date().toISOString();
+        
+        console.log('⚙️ Updating settings for user', req.user.id, ':', validUpdates);
+        
         // Try to update settings
         const { data, error } = await supabase
             .from('user_settings')
-            .update({
-                ...updates,
-                updated_at: new Date().toISOString()
-            })
+            .update(validUpdates)
             .eq('user_id', req.user.id)
             .select()
             .single();
@@ -2995,10 +3084,39 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
         
         if (error) {
             console.error('Error updating settings:', error);
+            // If it's a not found error, try to create the settings
+            if (error.code === 'PGRST116') {
+                console.log('📝 Settings not found, creating new settings for user', req.user.id);
+                
+                const newSettings = {
+                    user_id: req.user.id,
+                    earnings_per_order: validUpdates.earnings_per_order || 1.50,
+                    notificationSettings: validUpdates.notificationSettings || {
+                        soundEnabled: true,
+                        browserEnabled: false
+                    },
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                };
+                
+                const { data: createdData, error: createError } = await supabase
+                    .from('user_settings')
+                    .insert(newSettings)
+                    .select()
+                    .single();
+                
+                if (createError) {
+                    console.error('Error creating settings after update failed:', createError);
+                    throw createError;
+                }
+                
+                console.log('✅ Settings created for user', req.user.id);
+                return res.json(createdData);
+            }
             throw error;
         }
         
-        // When updating, convert notification_settings to notificationSettings if present
+        // Convert notification_settings to notificationSettings if present (for backward compatibility)
         if (updates.notification_settings && !updates.notificationSettings) {
             updates.notificationSettings = updates.notification_settings;
             delete updates.notification_settings;
@@ -3019,7 +3137,7 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
 app.put('/api/user/orders/:id', authenticateUser, async (req, res) => {
     try {
         const { id } = req.params;
-        const { shop_id, price, notes } = req.body;
+        const { shop_id, price, notes, address, payment_method } = req.body;
         
         console.log('Updating order', id, 'for user', req.userId);
         
@@ -3068,13 +3186,15 @@ app.put('/api/user/orders/:id', authenticateUser, async (req, res) => {
             });
         }
         
-        // Update the order - keep original earnings value
+        // Update the order - keep original earnings value, add payment method and address
         const { data, error } = await supabase
             .from('orders')
             .update({ 
                 shop_id: parseInt(shop_id),
                 price: parseFloat(price),
                 notes: notes || '',
+                address: address || '',
+                payment_method: payment_method || 'cash',
                 // Keep original earnings - cannot be modified
                 earnings: existingOrder.earnings
             })
@@ -3186,6 +3306,452 @@ function broadcastOrderUpdateToShop(shopId, action, order) {
         }
     });
 }
+// --- CATEGORIES API ENDPOINTS ---
+
+// GET /api/categories - Get all categories (for drivers/authenticated users)
+app.get('/api/categories', authenticateUser, async (req, res) => {
+    try {
+        console.log('Loading categories for user', req.userId);
+        
+        const { data: categories, error } = await supabase
+            .from('categories')
+            .select('*')
+            .order('name');
+        
+        if (error) {
+            throw error;
+        }
+        
+        res.json({
+            success: true,
+            categories: categories || []
+        });
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to load categories',
+            error: error.message
+        });
+    }
+});
+
+// POST /api/categories - Create new category (for drivers/authenticated users)
+app.post('/api/categories', authenticateUser, async (req, res) => {
+    try {
+        const { name, description, color, icon, is_active = true } = req.body;
+        
+        console.log('Creating category for user', req.userId);
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Category name is required'
+            });
+        }
+        
+        // Check if category name already exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('name', name.trim())
+            .single();
+        
+        if (existingCategory) {
+            return res.status(400).json({
+                success: false,
+                message: 'A category with this name already exists'
+            });
+        }
+        
+        const categoryData = {
+            name: name.trim(),
+            description: description?.trim() || null,
+            color: color || '#ff6b35',
+            icon: icon || 'fas fa-utensils',
+            is_active: is_active
+        };
+        
+        const { data, error } = await supabase
+            .from('categories')
+            .insert([categoryData])
+            .select('*')
+            .single();
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category created successfully:', data.name);
+        
+        res.json({
+            success: true,
+            category: data,
+            message: 'Category created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create category',
+            error: error.message
+        });
+    }
+});
+
+// PUT /api/categories/:id - Update category (for drivers/authenticated users)
+app.put('/api/categories/:id', authenticateUser, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, color, icon, is_active } = req.body;
+        
+        console.log('Updating category', id, 'for user', req.userId);
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Category name is required'
+            });
+        }
+        
+        // Check if category exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingCategory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Category not found'
+            });
+        }
+        
+        // Check if new name conflicts with another category
+        const { data: nameConflict, error: nameError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('name', name.trim())
+            .neq('id', id)
+            .single();
+        
+        if (nameConflict) {
+            return res.status(400).json({
+                success: false,
+                message: 'A category with this name already exists'
+            });
+        }
+        
+        const updateData = {
+            name: name.trim(),
+            description: description?.trim() || null,
+            color: color || '#ff6b35',
+            icon: icon || 'fas fa-utensils',
+            is_active: is_active !== undefined ? is_active : true,
+            updated_at: new Date().toISOString()
+        };
+        
+        const { data, error } = await supabase
+            .from('categories')
+            .update(updateData)
+            .eq('id', id)
+            .select('*')
+            .single();
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category updated successfully:', data.name);
+        
+        res.json({
+            success: true,
+            category: data,
+            message: 'Category updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update category',
+            error: error.message
+        });
+    }
+});
+
+// DELETE /api/categories/:id - Delete category (for drivers/authenticated users)
+app.delete('/api/categories/:id', authenticateUser, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        console.log('Deleting category', id, 'for user', req.userId);
+        
+        // Check if category exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id, name')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingCategory) {
+            return res.status(404).json({
+                success: false,
+                message: 'Category not found'
+            });
+        }
+        
+        // TODO: Check if category is being used by shops/products before deleting
+        // For now, we'll allow deletion - you can add validation later
+        
+        const { error } = await supabase
+            .from('categories')
+            .delete()
+            .eq('id', id);
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category deleted successfully:', existingCategory.name);
+        
+        res.json({
+            success: true,
+            message: 'Category deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete category',
+            error: error.message
+        });
+    }
+});
+
+// --- ADMIN CATEGORIES API ENDPOINTS (No authentication required) ---
+
+// GET /api/admin/categories - Get all categories for admin dashboard
+app.get('/api/admin/categories', async (req, res) => {
+    try {
+        console.log('Loading categories for admin dashboard');
+        
+        const { data: categories, error } = await supabase
+            .from('categories')
+            .select('*')
+            .order('name');
+        
+        if (error) {
+            throw error;
+        }
+        
+        res.json({
+            success: true,
+            categories: categories || []
+        });
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to load categories',
+            error: error.message
+        });
+    }
+});
+
+// POST /api/admin/categories - Create new category from admin dashboard
+app.post('/api/admin/categories', async (req, res) => {
+    try {
+        const { name, description, color, icon, is_active = true } = req.body;
+        
+        console.log('Creating category from admin dashboard');
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'Category name is required'
+            });
+        }
+        
+        // Check if category name already exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('name', name.trim())
+            .single();
+        
+        if (existingCategory) {
+            return res.status(400).json({
+                success: false,
+                error: 'A category with this name already exists'
+            });
+        }
+        
+        const categoryData = {
+            name: name.trim(),
+            description: description?.trim() || null,
+            color: color || '#ff6b35',
+            icon: icon || 'fas fa-utensils',
+            is_active: is_active
+        };
+        
+        const { data, error } = await supabase
+            .from('categories')
+            .insert([categoryData])
+            .select('*')
+            .single();
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category created successfully from admin:', data.name);
+        
+        res.json({
+            success: true,
+            category: data,
+            message: 'Category created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create category',
+            error: error.message
+        });
+    }
+});
+
+// PUT /api/admin/categories/:id - Update category from admin dashboard
+app.put('/api/admin/categories/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, color, icon, is_active } = req.body;
+        
+        console.log('Updating category', id, 'from admin dashboard');
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: 'Category name is required'
+            });
+        }
+        
+        // Check if category exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingCategory) {
+            return res.status(404).json({
+                success: false,
+                error: 'Category not found'
+            });
+        }
+        
+        // Check if new name conflicts with another category
+        const { data: nameConflict, error: nameError } = await supabase
+            .from('categories')
+            .select('id')
+            .eq('name', name.trim())
+            .neq('id', id)
+            .single();
+        
+        if (nameConflict) {
+            return res.status(400).json({
+                success: false,
+                error: 'A category with this name already exists'
+            });
+        }
+        
+        const updateData = {
+            name: name.trim(),
+            description: description?.trim() || null,
+            color: color || '#ff6b35',
+            icon: icon || 'fas fa-utensils',
+            is_active: is_active !== undefined ? is_active : true,
+            updated_at: new Date().toISOString()
+        };
+        
+        const { data, error } = await supabase
+            .from('categories')
+            .update(updateData)
+            .eq('id', id)
+            .select('*')
+            .single();
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category updated successfully from admin:', data.name);
+        
+        res.json({
+            success: true,
+            category: data,
+            message: 'Category updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update category',
+            error: error.message
+        });
+    }
+});
+
+// DELETE /api/admin/categories/:id - Delete category from admin dashboard
+app.delete('/api/admin/categories/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        console.log('Deleting category', id, 'from admin dashboard');
+        
+        // Check if category exists
+        const { data: existingCategory, error: checkError } = await supabase
+            .from('categories')
+            .select('id, name')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingCategory) {
+            return res.status(404).json({
+                success: false,
+                error: 'Category not found'
+            });
+        }
+        
+        // TODO: Check if category is being used by shops/products before deleting
+        // For now, we'll allow deletion - you can add validation later
+        
+        const { error } = await supabase
+            .from('categories')
+            .delete()
+            .eq('id', id);
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('✅ Category deleted successfully from admin:', existingCategory.name);
+        
+        res.json({
+            success: true,
+            message: 'Category deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting category:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete category',
+            error: error.message
+        });
+    }
+});
+
 // --- PATCH/PUT/DELETE endpoints for orders ---
 // After successful order update by shop, call broadcastOrderUpdateToDrivers(shopId, 'edit', order)
 // After successful order delete by shop, call broadcastOrderUpdateToDrivers(shopId, 'delete', { id: orderId })

@@ -320,53 +320,7 @@ body::before {
     font-weight: 500;
 }
 
-/* Toast Notifications */
-.toast {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--border-radius);
-    padding: 16px;
-    box-shadow: var(--shadow-lg);
-    z-index: 10000;
-    animation: slideInRight 0.3s ease-out;
-    min-width: 280px;
-}
-
-.toast.success {
-    border-left: 4px solid var(--success-color);
-}
-
-.toast.error {
-    border-left: 4px solid var(--error-color);
-}
-
-.toast-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.toast.success .toast-content i {
-    color: var(--success-color);
-}
-
-.toast.error .toast-content i {
-    color: var(--error-color);
-}
-
-@keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
+/* Old toast notifications removed - using modern notifications only */
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
@@ -381,12 +335,7 @@ body::before {
         font-size: 22px;
     }
     
-    .toast {
-        top: 10px;
-        right: 10px;
-        left: 10px;
-        min-width: auto;
-    }
+    /* Old toast styles removed */
     
     /* Ensure proper scrolling on mobile */
     body {
@@ -1213,7 +1162,7 @@ body::before {
 .notifications-timeline {
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 16px;
 }
 
 .notifications-group {
@@ -1223,15 +1172,15 @@ body::before {
 .group-header {
     display: flex;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin-bottom: 12px;
     position: sticky;
     top: 20px;
     z-index: 10;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
-    padding: 8px 0;
-    border-radius: 8px;
+    padding: 4px 0;
+    border-radius: 6px;
 }
 
 .group-date {
@@ -1254,21 +1203,21 @@ body::before {
 .group-notifications {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 6px;
     position: relative;
 }
 
-/* Compact Notification Cards */
+/* Ultra-Slim Notification Cards */
 .notification-card.compact {
     background: white;
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 8px;
+    padding: 8px 12px;
     border: 1px solid #f1f5f9;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    margin-bottom: 4px;
 }
 
 .notification-card.compact::before {
@@ -1319,8 +1268,8 @@ body::before {
 .notification-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: 8px;
+    margin-bottom: 2px;
 }
 
 .shop-section {
@@ -1332,28 +1281,28 @@ body::before {
 }
 
 .shop-avatar-mini {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-    border-radius: 10px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 16px;
+    font-size: 12px;
     position: relative;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 1px 4px rgba(99, 102, 241, 0.2);
 }
 
 .status-dot {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 12px;
-    height: 12px;
+    bottom: -1px;
+    right: -1px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border: 1px solid white;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .status-dot.pending {
@@ -1370,23 +1319,23 @@ body::before {
 }
 
 .shop-name-mini {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
     color: #1e293b;
-    margin: 0 0 2px 0;
-    line-height: 1.3;
+    margin: 0;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .time-mini {
-    font-size: 11px;
+    font-size: 9px;
     color: #64748b;
     font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
 }
 
 .time-mini i {
@@ -1429,15 +1378,15 @@ body::before {
 }
 
 .action-btn-mini {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 10px;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -1477,10 +1426,10 @@ body::before {
 .message-content-mini {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 12px;
+    gap: 6px;
+    padding: 6px 8px;
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid #e2e8f0;
     position: relative;
 }
@@ -1493,8 +1442,8 @@ body::before {
 }
 
 .notification-message-mini {
-    font-size: 13px;
-    line-height: 1.4;
+    font-size: 11px;
+    line-height: 1.3;
     color: #374151;
     margin: 0;
     flex: 1;
