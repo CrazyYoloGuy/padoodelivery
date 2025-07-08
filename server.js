@@ -27,8 +27,8 @@ const clients = new Map();
 // Configure web-push for push notifications
 webpush.setVapidDetails(
     'mailto:admin@padoodelivery.com',
-    'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I', // Public key (matches client)
-    'DcH8vC9j5KL2mN7p8QrT6uW1x3Z5bGf9hJ0k2M4n6P8q' // Private key (keep secret)
+    'BG_qTrWFr2qESzBzbog1Ajx_6r79bf4WheyZD2jgdzz_o68TzMkzR4Fd-WS0Y-G2gJK7xQcD0HvQ259UgQk4kM8', // Public key (matches client)
+    'G3uFORceYvwJtXujTs_dagHETHd1sGIJrRndMP7-hDk' // Private key (keep secret)
 );
 
 console.log('🔔 Web push notifications configured');

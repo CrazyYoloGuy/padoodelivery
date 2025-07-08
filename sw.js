@@ -338,9 +338,8 @@ function urlBase64ToUint8Array(base64String) {
 
 // Get application server key (VAPID public key)
 function getApplicationServerKey() {
-  // This should be your VAPID public key
-  // For demo purposes, using a placeholder - in production, get this from your server
-  return 'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I';
+  // This should match the public key in server.js and client code
+  return 'BG_qTrWFr2qESzBzbog1Ajx_6r79bf4WheyZD2jgdzz_o68TzMkzR4Fd-WS0Y-G2gJK7xQcD0HvQ259UgQk4kM8';
 }
 
 // Message handling for communication with main thread

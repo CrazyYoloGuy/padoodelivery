@@ -5790,8 +5790,8 @@ class DeliveryApp {
     
     // Get application server key (VAPID public key)
     getApplicationServerKey() {
-        // This should match the key in service worker
-        return 'BNNjM8gF0C8oX-fO1-3QhzV8JY8sJFW3W3P6cWpT9BYo2R5Y5PJcM1YjGOD6sOQoW3z2JZr2g7X5c9Y2QOJ5j5I';
+        // This should match the key in service worker and server
+        return 'BG_qTrWFr2qESzBzbog1Ajx_6r79bf4WheyZD2jgdzz_o68TzMkzR4Fd-WS0Y-G2gJK7xQcD0HvQ259UgQk4kM8';
     }
     
     // Convert VAPID key to Uint8Array
