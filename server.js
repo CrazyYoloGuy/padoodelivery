@@ -946,7 +946,7 @@ app.put('/api/user/settings', authenticateUser, async (req, res) => {
             .from('user_settings')
             .select('*')
             .eq('user_id', userId)
-            .single();
+            .maybeSingle();
         
         if (checkError && checkError.code !== 'PGRST116') {
             console.error('Error checking user settings:', checkError);
@@ -1198,7 +1198,7 @@ app.get('/api/user/shops', authenticateUser, async (req, res) => {
         // Filter shops by the authenticated user ID
         const { data, error } = await supabase
             .from('partner_shops')
-            .select('id, name, created_at')
+            .select('id, name, category_id, created_at')
             .eq('user_id', req.userId)
             .order('created_at', { ascending: false });
         
@@ -1460,9 +1460,9 @@ app.get('/api/user/orders', authenticateUser, async (req, res) => {
 // POST /api/user/orders - Add a new order for a user - FIXED with proper user filtering
 app.post('/api/user/orders', authenticateUser, async (req, res) => {
     try {
-        const { shop_id, price, earnings, notes, address } = req.body;
+        const { shop_id, price, earnings, notes, address, payment_method } = req.body;
         
-        console.log('Received order data:', { shop_id, price, earnings, notes, address, userId: req.userId });
+        console.log('Received order data:', { shop_id, price, earnings, notes, address, payment_method, userId: req.userId });
         
         if (!shop_id || !price || !earnings) {
             return res.status(400).json({
@@ -1498,7 +1498,8 @@ app.post('/api/user/orders', authenticateUser, async (req, res) => {
                 price: parseFloat(price),
                 earnings: parseFloat(earnings),
                 notes: notes || '',
-                address: address || ''
+                address: address || '',
+                payment_method: payment_method || 'cash'
             }])
             .select('*')
             .single();
@@ -1515,6 +1516,7 @@ app.post('/api/user/orders', authenticateUser, async (req, res) => {
             earnings: orderData.earnings,
             notes: orderData.notes,
             address: orderData.address,
+            payment_method: orderData.payment_method,
             created_at: orderData.created_at,
             shop_name: shopData.name
         };
@@ -3090,11 +3092,31 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
         
         console.log('⚙️ Updating settings for user', req.user.id, ':', validUpdates);
         
-        // Try to update settings
+        // Use upsert to handle both insert and update cases
+        const settingsData = {
+            user_id: req.user.id,
+            earnings_per_order: validUpdates.earnings_per_order || 1.50,
+            notificationSettings: validUpdates.notificationSettings || (existingSettings?.notificationSettings || {
+                soundEnabled: true,
+                browserEnabled: false
+            }),
+            updated_at: new Date().toISOString()
+        };
+        
+        // If no existing settings, add created_at
+        if (!existingSettings) {
+            settingsData.created_at = new Date().toISOString();
+        }
+        
+        console.log('🔄 Upserting settings for user', req.user.id, ':', validUpdates);
+        
+        // Use upsert (insert with on conflict update)
         const { data, error } = await supabase
             .from('user_settings')
-            .update(validUpdates)
-            .eq('user_id', req.user.id)
+            .upsert(settingsData, {
+                onConflict: 'user_id',
+                ignoreDuplicates: false
+            })
             .select()
             .single();
         
@@ -3109,50 +3131,18 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
         }
         
         if (error) {
-            console.error('Error updating settings:', error);
-            // If it's a not found error, try to create the settings
-            if (error.code === 'PGRST116') {
-                console.log('📝 Settings not found, creating new settings for user', req.user.id);
-                
-                const newSettings = {
-                    user_id: req.user.id,
-                    earnings_per_order: validUpdates.earnings_per_order || 1.50,
-                    notificationSettings: validUpdates.notificationSettings || {
-                        soundEnabled: true,
-                        browserEnabled: false
-                    },
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                };
-                
-                const { data: createdData, error: createError } = await supabase
-                    .from('user_settings')
-                    .insert(newSettings)
-                    .select()
-                    .single();
-                
-                if (createError) {
-                    console.error('Error creating settings after update failed:', createError);
-                    throw createError;
-                }
-                
-                console.log('✅ Settings created for user', req.user.id);
-                return res.json(createdData);
-            }
+            console.error('Error upserting settings:', error);
             throw error;
         }
         
-        // Convert notification_settings to notificationSettings if present (for backward compatibility)
-        if (updates.notification_settings && !updates.notificationSettings) {
-            updates.notificationSettings = updates.notification_settings;
-            delete updates.notification_settings;
+        console.log('✅ Settings upserted successfully for user', req.user.id);
+        
+        // Add notification_settings for backward compatibility
+        if (data && data.notificationSettings) {
+            data.notification_settings = data.notificationSettings;
         }
         
-        res.json(data || {
-            ...existingSettings,
-            ...updates,
-            updated_at: new Date().toISOString()
-        });
+        res.json(data);
     } catch (error) {
         console.error('Error updating user settings:', error);
         res.status(500).json({ error: 'Failed to update user settings' });
@@ -3527,8 +3517,53 @@ app.delete('/api/categories/:id', authenticateUser, async (req, res) => {
             });
         }
         
-        // TODO: Check if category is being used by shops/products before deleting
-        // For now, we'll allow deletion - you can add validation later
+        // Check if category is being used by partner_shops
+        const { data: relatedShops, error: shopsError } = await supabase
+            .from('partner_shops')
+            .select('id, name')
+            .eq('category_id', id)
+            .limit(5);
+        
+        if (shopsError) {
+            console.error('Error checking related shops:', shopsError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to check category usage'
+            });
+        }
+        
+        if (relatedShops && relatedShops.length > 0) {
+            const shopNames = relatedShops.map(shop => shop.name).join(', ');
+            const moreShops = relatedShops.length === 5 ? ' and others' : '';
+            return res.status(400).json({
+                success: false,
+                message: `Cannot delete category "${existingCategory.name}" because it is being used by ${relatedShops.length} shop(s): ${shopNames}${moreShops}. Please reassign these shops to a different category first.`
+            });
+        }
+        
+        // Check if category is being used by shop_accounts
+        const { data: relatedShopAccounts, error: shopAccountsError } = await supabase
+            .from('shop_accounts')
+            .select('id, shop_name')
+            .eq('category_id', id)
+            .limit(5);
+        
+        if (shopAccountsError) {
+            console.error('Error checking related shop accounts:', shopAccountsError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to check category usage'
+            });
+        }
+        
+        if (relatedShopAccounts && relatedShopAccounts.length > 0) {
+            const shopNames = relatedShopAccounts.map(shop => shop.shop_name).join(', ');
+            const moreShops = relatedShopAccounts.length === 5 ? ' and others' : '';
+            return res.status(400).json({
+                success: false,
+                message: `Cannot delete category "${existingCategory.name}" because it is being used by ${relatedShopAccounts.length} shop account(s): ${shopNames}${moreShops}. Please reassign these shops to a different category first.`
+            });
+        }
         
         const { error } = await supabase
             .from('categories')
@@ -3557,11 +3592,12 @@ app.delete('/api/categories/:id', authenticateUser, async (req, res) => {
 
 // --- ADMIN CATEGORIES API ENDPOINTS (No authentication required) ---
 
-// GET /api/admin/categories - Get all categories for admin dashboard
+// GET /api/admin/categories - Get all categories for admin dashboard with statistics
 app.get('/api/admin/categories', async (req, res) => {
     try {
         console.log('Loading categories for admin dashboard');
         
+        // Get all categories
         const { data: categories, error } = await supabase
             .from('categories')
             .select('*')
@@ -3571,9 +3607,42 @@ app.get('/api/admin/categories', async (req, res) => {
             throw error;
         }
         
+        // Get shop counts for each category from both partner_shops and shop_accounts
+        const categoriesWithStats = await Promise.all(
+            (categories || []).map(async (category) => {
+                // Count partner_shops
+                const { count: partnerShopsCount, error: partnerShopsError } = await supabase
+                    .from('partner_shops')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('category_id', category.id);
+                
+                // Count shop_accounts
+                const { count: shopAccountsCount, error: shopAccountsError } = await supabase
+                    .from('shop_accounts')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('category_id', category.id);
+                
+                const totalShops = (partnerShopsCount || 0) + (shopAccountsCount || 0);
+                
+                if (partnerShopsError) {
+                    console.error(`Error counting partner shops for category ${category.id}:`, partnerShopsError);
+                }
+                if (shopAccountsError) {
+                    console.error(`Error counting shop accounts for category ${category.id}:`, shopAccountsError);
+                }
+                
+                return {
+                    ...category,
+                    shop_count: totalShops,
+                    partner_shops_count: partnerShopsCount || 0,
+                    shop_accounts_count: shopAccountsCount || 0
+                };
+            })
+        );
+        
         res.json({
             success: true,
-            categories: categories || []
+            categories: categoriesWithStats
         });
     } catch (error) {
         console.error('Error loading categories:', error);
@@ -3729,6 +3798,123 @@ app.put('/api/admin/categories/:id', async (req, res) => {
     }
 });
 
+// GET /api/admin/driver-stats/:driverId - Get driver statistics
+app.get('/api/admin/driver-stats/:driverId', async (req, res) => {
+    try {
+        const { driverId } = req.params;
+        
+        console.log('Fetching driver stats for:', driverId);
+        
+        // Get total shops created by driver
+        const { data: shopsData, error: shopsError } = await supabase
+            .from('partner_shops')
+            .select('id')
+            .eq('user_id', driverId);
+        
+        if (shopsError) {
+            console.error('Error fetching driver shops:', shopsError);
+        }
+        
+        // Get total orders and earnings for driver
+        const { data: ordersData, error: ordersError } = await supabase
+            .from('orders')
+            .select('earnings')
+            .eq('user_id', driverId);
+        
+        if (ordersError) {
+            console.error('Error fetching driver orders:', ordersError);
+        }
+        
+        const totalShops = shopsData ? shopsData.length : 0;
+        const totalOrders = ordersData ? ordersData.length : 0;
+        const totalEarnings = ordersData ? 
+            ordersData.reduce((sum, order) => sum + (parseFloat(order.earnings) || 0), 0) : 0;
+        
+        console.log('Driver stats:', { totalShops, totalOrders, totalEarnings });
+        
+        res.json({
+            success: true,
+            stats: {
+                totalShops,
+                totalOrders,
+                totalEarnings
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching driver stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch driver statistics',
+            error: error.message
+        });
+    }
+});
+
+// GET /api/admin/driver-details/:driverId - Get detailed driver information for advanced modal
+app.get('/api/admin/driver-details/:driverId', async (req, res) => {
+    try {
+        const { driverId } = req.params;
+        
+        console.log('Fetching driver details for:', driverId);
+        
+        // Get recent shops created by driver (last 10)
+        const { data: recentShops, error: shopsError } = await supabase
+            .from('partner_shops')
+            .select('id, name, created_at')
+            .eq('user_id', driverId)
+            .order('created_at', { ascending: false })
+            .limit(10);
+        
+        if (shopsError) {
+            console.error('Error fetching driver shops:', shopsError);
+        }
+        
+        // Get recent orders by driver (last 10)
+        const { data: recentOrders, error: ordersError } = await supabase
+            .from('orders')
+            .select('id, earnings, payment_method, created_at')
+            .eq('user_id', driverId)
+            .order('created_at', { ascending: false })
+            .limit(10);
+        
+        if (ordersError) {
+            console.error('Error fetching driver orders:', ordersError);
+        }
+        
+        // Get user settings if available
+        const { data: settings, error: settingsError } = await supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', driverId)
+            .single();
+        
+        // Don't throw error if settings don't exist, just use empty object
+        const userSettings = settingsError ? {} : settings;
+        
+        console.log('Driver details fetched:', {
+            shops: recentShops?.length || 0,
+            orders: recentOrders?.length || 0,
+            hasSettings: !!settings
+        });
+        
+        res.json({
+            success: true,
+            details: {
+                recentShops: recentShops || [],
+                recentOrders: recentOrders || [],
+                settings: userSettings
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching driver details:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch driver details',
+            error: error.message
+        });
+    }
+});
+
 // DELETE /api/admin/categories/:id - Delete category from admin dashboard
 app.delete('/api/admin/categories/:id', async (req, res) => {
     try {
@@ -3750,8 +3936,53 @@ app.delete('/api/admin/categories/:id', async (req, res) => {
             });
         }
         
-        // TODO: Check if category is being used by shops/products before deleting
-        // For now, we'll allow deletion - you can add validation later
+        // Check if category is being used by partner_shops
+        const { data: relatedShops, error: shopsError } = await supabase
+            .from('partner_shops')
+            .select('id, name')
+            .eq('category_id', id)
+            .limit(5);
+        
+        if (shopsError) {
+            console.error('Error checking related shops:', shopsError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to check category usage'
+            });
+        }
+        
+        if (relatedShops && relatedShops.length > 0) {
+            const shopNames = relatedShops.map(shop => shop.name).join(', ');
+            const moreShops = relatedShops.length === 5 ? ' and others' : '';
+            return res.status(400).json({
+                success: false,
+                error: `Cannot delete category "${existingCategory.name}" because it is being used by ${relatedShops.length} shop(s): ${shopNames}${moreShops}. Please reassign these shops to a different category first.`
+            });
+        }
+        
+        // Check if category is being used by shop_accounts
+        const { data: relatedShopAccounts, error: shopAccountsError } = await supabase
+            .from('shop_accounts')
+            .select('id, shop_name')
+            .eq('category_id', id)
+            .limit(5);
+        
+        if (shopAccountsError) {
+            console.error('Error checking related shop accounts:', shopAccountsError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to check category usage'
+            });
+        }
+        
+        if (relatedShopAccounts && relatedShopAccounts.length > 0) {
+            const shopNames = relatedShopAccounts.map(shop => shop.shop_name).join(', ');
+            const moreShops = relatedShopAccounts.length === 5 ? ' and others' : '';
+            return res.status(400).json({
+                success: false,
+                error: `Cannot delete category "${existingCategory.name}" because it is being used by ${relatedShopAccounts.length} shop account(s): ${shopNames}${moreShops}. Please reassign these shops to a different category first.`
+            });
+        }
         
         const { error } = await supabase
             .from('categories')

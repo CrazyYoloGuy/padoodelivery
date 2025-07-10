@@ -402,6 +402,9 @@ class Dashboard {
                     </div>
                 </div>
                 <div class="shop-actions">
+                    <button class="action-btn info" onclick="dashboard.openDriverInfoModal('${driver.id}')" title="Driver Information">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
                     <button class="action-btn edit" onclick="dashboard.editUser('${driver.id}')" title="Edit Driver">
                         <i class="fas fa-edit"></i>
                     </button>
@@ -1420,6 +1423,367 @@ class Dashboard {
         }
     }
 
+    async openDriverInfoModal(driverId) {
+        try {
+            const driver = this.users.find(u => u.id === driverId);
+            if (!driver) {
+                this.showToast('Driver not found', 'error');
+                return;
+            }
+
+            // Fetch comprehensive driver data
+            const [statsResponse, detailsResponse] = await Promise.all([
+                fetch(`/api/admin/driver-stats/${driverId}`),
+                fetch(`/api/admin/driver-details/${driverId}`)
+            ]);
+
+            let driverStats = { totalShops: 0, totalOrders: 0, totalEarnings: 0 };
+            let driverDetails = { recentOrders: [], recentShops: [], settings: {} };
+
+            if (statsResponse.ok) {
+                const result = await statsResponse.json();
+                if (result.success) driverStats = result.stats;
+            }
+
+            if (detailsResponse.ok) {
+                const result = await detailsResponse.json();
+                if (result.success) driverDetails = result.details;
+            }
+
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            
+            const joinDate = new Date(driver.created_at).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const modalId = 'driver-info-modal-' + Date.now();
+
+            overlay.innerHTML = `
+                <div class="modal" style="max-width: 700px; max-height: 80vh;">
+                    <div class="modal-header" style="border-bottom: 1px solid #e5e7eb; padding-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 50px; height: 50px; background: var(--primary-color); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div>
+                                <h3 style="margin: 0; font-size: 18px; color: #1f2937;">${driver.email}</h3>
+                                <p style="margin: 2px 0 0; color: #6b7280; font-size: 13px;">Driver ID: ${driver.id} • Member since ${joinDate}</p>
+                            </div>
+                        </div>
+                        <button class="modal-close" onclick="dashboard.closeModal()" style="position: absolute; top: 16px; right: 16px; background:none; border:none; font-size:20px; color:var(--text-muted); cursor:pointer;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <div class="driver-modal-nav" style="display: flex; border-bottom: 1px solid #e5e7eb; background: #f8fafc;">
+                        <button class="nav-tab active" data-tab="overview" onclick="dashboard.switchDriverTab(event, 'overview', '${modalId}')" style="flex: 1; padding: 12px 16px; border: none; background: none; cursor: pointer; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent;">
+                            <i class="fas fa-chart-bar"></i> Overview
+                        </button>
+                        <button class="nav-tab" data-tab="details" onclick="dashboard.switchDriverTab(event, 'details', '${modalId}')" style="flex: 1; padding: 12px 16px; border: none; background: none; cursor: pointer; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent;">
+                            <i class="fas fa-user-circle"></i> Details
+                        </button>
+                        <button class="nav-tab" data-tab="activity" onclick="dashboard.switchDriverTab(event, 'activity', '${modalId}')" style="flex: 1; padding: 12px 16px; border: none; background: none; cursor: pointer; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent;">
+                            <i class="fas fa-history"></i> Activity
+                        </button>
+                        <button class="nav-tab" data-tab="financial" onclick="dashboard.switchDriverTab(event, 'financial', '${modalId}')" style="flex: 1; padding: 12px 16px; border: none; background: none; cursor: pointer; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent;">
+                            <i class="fas fa-dollar-sign"></i> Financial
+                        </button>
+                    </div>
+
+                    <div class="modal-body" style="padding: 20px; overflow-y: auto; max-height: 60vh;" id="${modalId}">
+                        ${this.renderDriverOverviewTab(driver, driverStats, driverDetails)}
+                        ${this.renderDriverDetailsTab(driver, driverDetails)}
+                        ${this.renderDriverActivityTab(driver, driverDetails)}
+                        ${this.renderDriverFinancialTab(driver, driverStats, driverDetails)}
+                    </div>
+
+                    <div class="modal-footer" style="border-top: 1px solid #e5e7eb; padding: 16px; display: flex; justify-content: flex-end; gap: 12px;">
+                        <button type="button" class="btn secondary" onclick="dashboard.closeModal()">Close</button>
+                        <button type="button" class="btn primary" onclick="dashboard.editUser('${driver.id}'); dashboard.closeModal();">
+                            <i class="fas fa-edit"></i> Edit Driver
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+            document.body.style.overflow = 'hidden';
+            
+            // Add styles for tabs
+            const style = document.createElement('style');
+            style.textContent = `
+                .nav-tab.active {
+                    color: var(--primary-color) !important;
+                    border-bottom-color: var(--primary-color) !important;
+                }
+                .nav-tab:hover {
+                    background: #f1f5f9 !important;
+                }
+                .tab-content {
+                    display: none;
+                }
+                .tab-content.active {
+                    display: block;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            requestAnimationFrame(() => {
+                overlay.classList.add('active');
+            });
+
+        } catch (error) {
+            console.error('Error opening driver info modal:', error);
+            this.showToast('Failed to load driver information', 'error');
+        }
+    }
+
+    switchDriverTab(event, tabName, modalId) {
+        // Remove active class from all tabs
+        const modal = document.getElementById(modalId);
+        modal.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+        modal.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to clicked tab
+        event.target.classList.add('active');
+        
+        // Show corresponding content
+        const content = modal.querySelector(`[data-tab-content="${tabName}"]`);
+        if (content) content.classList.add('active');
+    }
+
+    renderDriverOverviewTab(driver, stats, details) {
+        return `
+            <div class="tab-content active" data-tab-content="overview">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 12px; position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: -10px; right: -10px; width: 40px; height: 40px; background: rgba(217, 119, 6, 0.1); border-radius: 50%;"></div>
+                        <div style="font-size: 28px; font-weight: bold; color: #d97706; margin-bottom: 4px;">
+                            ${stats.totalShops}
+                        </div>
+                        <div style="font-size: 12px; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px;">Total Shops</div>
+                    </div>
+                    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #dbeafe, #bfdbfe); border-radius: 12px; position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: -10px; right: -10px; width: 40px; height: 40px; background: rgba(37, 99, 235, 0.1); border-radius: 50%;"></div>
+                        <div style="font-size: 28px; font-weight: bold; color: #2563eb; margin-bottom: 4px;">
+                            ${stats.totalOrders}
+                        </div>
+                        <div style="font-size: 12px; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">Total Orders</div>
+                    </div>
+                    <div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #dcfce7, #bbf7d0); border-radius: 12px; position: relative; overflow: hidden;">
+                        <div style="position: absolute; top: -10px; right: -10px; width: 40px; height: 40px; background: rgba(22, 163, 74, 0.1); border-radius: 50%;"></div>
+                        <div style="font-size: 28px; font-weight: bold; color: #16a34a; margin-bottom: 4px;">
+                            $${stats.totalEarnings.toFixed(2)}
+                        </div>
+                        <div style="font-size: 12px; color: #15803d; text-transform: uppercase; letter-spacing: 0.5px;">Total Earnings</div>
+                    </div>
+                </div>
+                
+                <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                    <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-user-circle" style="color: var(--primary-color);"></i>
+                        Quick Info
+                    </h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                        <div>
+                            <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Account Status</div>
+                            <div style="font-weight: 600; color: #16a34a;">Active</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">User Type</div>
+                            <div style="font-weight: 600; color: #374151; text-transform: capitalize;">${driver.user_type}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Registration</div>
+                            <div style="font-weight: 600; color: #374151;">${new Date(driver.created_at).toLocaleDateString()}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderDriverDetailsTab(driver, details) {
+        return `
+            <div class="tab-content" data-tab-content="details">
+                <div style="display: grid; gap: 24px;">
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-id-card" style="color: var(--primary-color);"></i>
+                            Personal Information
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Email Address</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.email}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">User ID</div>
+                                <div style="font-weight: 500; color: #374151; font-family: monospace;">${driver.id}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">AFM (Tax ID)</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.afm || 'Not provided'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Phone Number</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.phone || 'Not provided'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Full Name</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.name || 'Not provided'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Address</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.address || 'Not provided'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-cog" style="color: var(--primary-color);"></i>
+                            Account Settings
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Account Type</div>
+                                <div style="font-weight: 500; color: #374151; text-transform: capitalize;">${driver.user_type}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Status</div>
+                                <div style="font-weight: 500; color: #16a34a;">Active</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Last Login</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.last_login ? new Date(driver.last_login).toLocaleString() : 'Never'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Created At</div>
+                                <div style="font-weight: 500; color: #374151;">${new Date(driver.created_at).toLocaleString()}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderDriverActivityTab(driver, details) {
+        return `
+            <div class="tab-content" data-tab-content="activity">
+                <div style="display: grid; gap: 24px;">
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-store" style="color: var(--primary-color);"></i>
+                            Recent Shops
+                        </h4>
+                        ${details.recentShops && details.recentShops.length > 0 ? 
+                            details.recentShops.map(shop => `
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: white; border-radius: 8px; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 500; color: #374151;">${shop.name}</div>
+                                        <div style="font-size: 12px; color: #6b7280;">Added ${new Date(shop.created_at).toLocaleDateString()}</div>
+                                    </div>
+                                    <div style="font-size: 12px; color: #6b7280; text-transform: uppercase;">Active</div>
+                                </div>
+                            `).join('') :
+                            '<div style="text-align: center; padding: 40px; color: #6b7280;">No shops created yet</div>'
+                        }
+                    </div>
+
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-shopping-bag" style="color: var(--primary-color);"></i>
+                            Recent Orders
+                        </h4>
+                        ${details.recentOrders && details.recentOrders.length > 0 ? 
+                            details.recentOrders.map(order => `
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: white; border-radius: 8px; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-weight: 500; color: #374151;">Order #${order.id}</div>
+                                        <div style="font-size: 12px; color: #6b7280;">${new Date(order.created_at).toLocaleDateString()}</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-weight: 500; color: #16a34a;">$${parseFloat(order.earnings || 0).toFixed(2)}</div>
+                                        <div style="font-size: 12px; color: #6b7280; text-transform: capitalize;">${order.payment_method || 'cash'}</div>
+                                    </div>
+                                </div>
+                            `).join('') :
+                            '<div style="text-align: center; padding: 40px; color: #6b7280;">No orders yet</div>'
+                        }
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderDriverFinancialTab(driver, stats, details) {
+        const avgOrderValue = stats.totalOrders > 0 ? (stats.totalEarnings / stats.totalOrders) : 0;
+        
+        return `
+            <div class="tab-content" data-tab-content="financial">
+                <div style="display: grid; gap: 24px;">
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-chart-line" style="color: var(--primary-color);"></i>
+                            Financial Summary
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                            <div style="text-align: center; padding: 16px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: bold; color: #16a34a; margin-bottom: 4px;">
+                                    $${stats.totalEarnings.toFixed(2)}
+                                </div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase;">Total Earnings</div>
+                            </div>
+                            <div style="text-align: center; padding: 16px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: bold; color: #2563eb; margin-bottom: 4px;">
+                                    $${avgOrderValue.toFixed(2)}
+                                </div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase;">Avg per Order</div>
+                            </div>
+                            <div style="text-align: center; padding: 16px; background: white; border-radius: 8px;">
+                                <div style="font-size: 24px; font-weight: bold; color: #d97706; margin-bottom: 4px;">
+                                    ${stats.totalOrders}
+                                </div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase;">Total Orders</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 20px;">
+                        <h4 style="margin: 0 0 16px; color: #374151; display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-wallet" style="color: var(--primary-color);"></i>
+                            Payment Information
+                        </h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Payment Method</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.payment_method || 'Not configured'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Bank Account</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.bank_account || 'Not provided'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Tax ID (AFM)</div>
+                                <div style="font-weight: 500; color: #374151;">${driver.afm || 'Not provided'}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px;">Earnings Settings</div>
+                                <div style="font-weight: 500; color: #374151;">${details.settings?.earnings_per_order ? '$' + details.settings.earnings_per_order.toFixed(2) + ' per order' : 'Default settings'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     openUserActionsModal(userId, userType, event) {
         event.stopPropagation();
         const user = this.users.find(u => u.id === userId);
@@ -1501,11 +1865,11 @@ class Dashboard {
                 
                 <div class="category-stats">
                     <div class="category-stat">
-                        <span class="stat-number">0</span>
+                        <span class="stat-number">${category.shop_count || 0}</span>
                         <span class="stat-label">Shops</span>
                     </div>
                     <div class="category-stat">
-                        <span class="stat-number">0</span>
+                        <span class="stat-number">-</span>
                         <span class="stat-label">Orders</span>
                     </div>
                 </div>

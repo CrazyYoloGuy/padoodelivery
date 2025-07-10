@@ -68,6 +68,7 @@ body {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    border-radius: 50%;
 }
 
 .app-title {
@@ -2581,4 +2582,9 @@ body {
         max-width: none !important;
         min-width: auto !important;
     }
+}
+
+/* Hide header logo in shop app */
+.header-logo {
+    display: none !important;
 }

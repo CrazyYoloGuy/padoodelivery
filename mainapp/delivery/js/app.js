@@ -145,7 +145,7 @@ class DeliveryApp {
         });
         
         // Use event delegation for dynamic content
-        document.addEventListener('click', (e) => {
+        document.addEventListener('click', async (e) => {
             // Don't process clicks if they're inside a notification modal
             if (e.target.closest('#edit-notification-modal, #delete-notification-modal, #confirm-notification-modal')) {
                 return;
@@ -229,7 +229,11 @@ class DeliveryApp {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Manage shops button clicked');
-                this.openShopModal();
+                try {
+                    await this.openShopModal();
+                } catch (error) {
+                    console.error('Error in manage shops button:', error);
+                }
                 return;
             }
             
@@ -238,7 +242,11 @@ class DeliveryApp {
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('Add shop button clicked');
-                this.openShopModal();
+                try {
+                    await this.openShopModal();
+                } catch (error) {
+                    console.error('Error in add shop button:', error);
+                }
                 return;
             }
             
@@ -420,7 +428,7 @@ class DeliveryApp {
     }
     
     updateStats() {
-        const totalEarnings = this.orders.reduce((sum, order) => sum + (parseFloat(order.price) || 0), 0);
+        const totalEarnings = this.orders.reduce((sum, order) => sum + (parseFloat(order.earnings) || 0), 0);
         const totalOrders = this.orders.length;
         
         const today = new Date().toDateString();
@@ -758,9 +766,28 @@ class DeliveryApp {
         this.createOrderModal();
     }
 
-    openShopModal() {
-        console.log('Opening shop modal');
-        this.createShopModal();
+    async openShopModal() {
+        try {
+            console.log('Opening shop modal');
+            
+            // Ensure categories are loaded before creating the modal
+            if (!this.categories || this.categories.length === 0) {
+                console.log('Categories not loaded, loading now...');
+                await this.loadCategories();
+            }
+            
+            // Check if we have any active categories
+            const activeCategories = this.categories.filter(cat => cat.is_active);
+            if (activeCategories.length === 0) {
+                this.showToast('No categories available. Please create a category first.', 'error');
+                return;
+            }
+            
+            this.createShopModal();
+        } catch (error) {
+            console.error('Error opening shop modal:', error);
+            this.showToast('Failed to open shop modal. Please try again.', 'error');
+        }
     }
 
     closeModal() {
@@ -811,11 +838,12 @@ class DeliveryApp {
         const earningsInput = document.getElementById('order-earnings');
         const notesInput = document.getElementById('order-notes');
         const addressInput = document.getElementById('order-address');
-        const paymentPaid = document.getElementById('payment-paid');
+                // Get the selected payment method from radio buttons
+        const selectedPaymentMethod = document.querySelector('input[name="payment-method"]:checked');
+        const paymentMethod = selectedPaymentMethod ? selectedPaymentMethod.value : 'cash';
+        const isPaid = paymentMethod === 'paid';
         
-            // Determine payment method and price
-            const isPaid = paymentPaid?.checked || false;
-            const paymentMethod = isPaid ? 'paid' : 'cash';
+        console.log('Selected payment method:', paymentMethod, 'isPaid:', isPaid);
         
             const formData = {
                 shop_id: shopSelect?.value,
@@ -1050,32 +1078,54 @@ class DeliveryApp {
     }
     
     async loadSettingsData() {
-        // First, fetch settings from the server
-        const serverSettings = await this.getUserSettings();
-        
-        // Update local settings object with server data
-        if (serverSettings && serverSettings.earnings_per_order !== undefined) {
+        try {
+            console.log('Loading settings data...');
+            
+            // First, fetch settings from the server
+            const serverSettings = await this.getUserSettings();
+            console.log('Server settings loaded:', serverSettings);
+            
+            // Update local settings object with server data
+            if (serverSettings && serverSettings.earnings_per_order !== undefined) {
+                this.settings = this.settings || {};
+                this.settings.earningsPerOrder = parseFloat(serverSettings.earnings_per_order);
+                console.log('Updated local settings:', this.settings);
+            } else {
+                // Set default if no server settings
+                this.settings = this.settings || {};
+                this.settings.earningsPerOrder = this.settings.earningsPerOrder || 1.50;
+                console.log('Using default earnings:', this.settings.earningsPerOrder);
+            }
+            
+            // Update UI elements if they exist
+            const earningsInput = document.getElementById('earnings-per-order');
+            if (earningsInput) {
+                earningsInput.value = this.settings.earningsPerOrder;
+                console.log('Updated earnings input to:', this.settings.earningsPerOrder);
+            }
+            
+            // Render shops in settings
+            this.renderShops();
+            
+            // Bind settings form if not already bound
+            const settingsForm = document.getElementById('settings-form');
+            if (settingsForm && !settingsForm.hasAttribute('data-bound')) {
+                settingsForm.setAttribute('data-bound', 'true');
+                settingsForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.saveSettings();
+                });
+            }
+        } catch (error) {
+            console.error('Error loading settings data:', error);
+            // Set defaults on error
             this.settings = this.settings || {};
-            this.settings.earningsPerOrder = parseFloat(serverSettings.earnings_per_order);
-        }
-        
-        // Update UI elements if they exist
-        const earningsInput = document.getElementById('earnings-per-order');
-        if (earningsInput) {
-            earningsInput.value = this.settings.earningsPerOrder;
-        }
-        
-        // Render shops in settings
-        this.renderShops();
-        
-        // Bind settings form if not already bound
-        const settingsForm = document.getElementById('settings-form');
-        if (settingsForm && !settingsForm.hasAttribute('data-bound')) {
-            settingsForm.setAttribute('data-bound', 'true');
-            settingsForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.saveSettings();
-            });
+            this.settings.earningsPerOrder = this.settings.earningsPerOrder || 1.50;
+            
+            const earningsInput = document.getElementById('earnings-per-order');
+            if (earningsInput) {
+                earningsInput.value = this.settings.earningsPerOrder;
+            }
         }
     }
     
@@ -1087,7 +1137,7 @@ class DeliveryApp {
             try {
                 // Save to server first
                 const response = await fetch('/api/user/settings', {
-                    method: 'PUT',
+                    method: 'PATCH',
                     headers: {
                         'Authorization': `Bearer ${this.sessionToken}`,
                         'Content-Type': 'application/json'
@@ -1098,13 +1148,31 @@ class DeliveryApp {
                 });
                 
                 if (response.ok) {
-                    // Update local settings
-                this.settings.earningsPerOrder = newEarnings;
-            localStorage.setItem('deliveryAppSettings', JSON.stringify(this.settings));
-                this.showToast('Settings saved successfully!', 'success');
+                    const savedData = await response.json();
+                    console.log('Settings saved successfully:', savedData);
+                    
+                    // Update local settings with the server response
+                    this.settings = this.settings || {};
+                    this.settings.earningsPerOrder = savedData.earnings_per_order || newEarnings;
+                    localStorage.setItem('deliveryAppSettings', JSON.stringify(this.settings));
+                    
+                    // Update the UI immediately
+                    if (earningsInput) {
+                        earningsInput.value = this.settings.earningsPerOrder;
+                    }
+                    
+                    this.showToast('Settings saved successfully!', 'success');
                 } else {
-                    const error = await response.json();
-                    throw new Error(error.message || 'Failed to save settings');
+                    const errorText = await response.text();
+                    console.error('Settings save failed:', response.status, errorText);
+                    let errorMsg;
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMsg = error.message || error.error || 'Failed to save settings';
+                    } catch (e) {
+                        errorMsg = `Server error: ${response.status}`;
+                    }
+                    throw new Error(errorMsg);
                 }
             } catch (error) {
                 console.error('Error saving settings:', error);
@@ -2048,14 +2116,21 @@ class DeliveryApp {
         }).format(notificationDate);
     }
 
-    editShop(shopId) {
-        console.log('Editing shop with ID:', shopId);
-        const shop = this.shops.find(s => s.id === shopId || s.id.toString() === shopId.toString());
-        if (!shop) {
-            this.showToast('Shop not found', 'error');
-            console.error('Shop not found with ID:', shopId);
-            return;
-        }
+    async editShop(shopId) {
+        try {
+            console.log('Editing shop with ID:', shopId);
+            const shop = this.shops.find(s => s.id === shopId || s.id.toString() === shopId.toString());
+            if (!shop) {
+                this.showToast('Shop not found', 'error');
+                console.error('Shop not found with ID:', shopId);
+                return;
+            }
+            
+            // Ensure categories are loaded before creating the edit modal
+            if (!this.categories || this.categories.length === 0) {
+                console.log('Categories not loaded for edit, loading now...');
+                await this.loadCategories();
+            }
 
         // Remove existing modal if any
         const existingEditModal = document.getElementById('edit-shop-modal');
@@ -2360,6 +2435,10 @@ class DeliveryApp {
             // Debug modal visibility
             this.debugModalVisibility('edit-shop-modal');
         }, 100);
+        } catch (error) {
+            console.error('Error in editShop:', error);
+            this.showToast('Failed to open edit modal. Please try again.', 'error');
+        }
     }
 
     async deleteShop(shopId) {
@@ -3241,10 +3320,12 @@ class DeliveryApp {
                     ">
                         <div>
                             <div style="font-size: 11px; color: #075985; text-transform: uppercase; margin-bottom: 4px;">Payment Method</div>
-                            <div style="color: #0369a1; font-size: 13px; font-weight: 500; text-transform: capitalize;">${order.payment_method || 'cash'}</div>
+                            <div style="color: #0369a1; font-size: 13px; font-weight: 500; text-transform: capitalize;">
+                                ${this.getPaymentMethodDisplay(order.payment_method)}
+                            </div>
                         </div>
                         <div style="color: #0369a1; font-size: 18px;">
-                            <i class="fas ${order.payment_method === 'cash' ? 'fa-money-bill-wave' : 'fa-credit-card'}"></i>
+                            <i class="fas ${this.getPaymentMethodIcon(order.payment_method)}"></i>
                         </div>
                     </div>
                     
@@ -3320,6 +3401,48 @@ class DeliveryApp {
         }
         
         return shopName;
+    }
+
+    getPaymentMethodDisplay(paymentMethod) {
+        // Normalize payment method and provide proper display text
+        if (!paymentMethod) return 'Cash';
+        
+        const method = paymentMethod.toString().toLowerCase().trim();
+        
+        console.log('Payment method for display:', method);
+        
+        switch (method) {
+            case 'paid':
+            case 'card':
+            case 'credit':
+            case 'online':
+                return 'Paid';
+            case 'cash':
+            case 'cod':
+            default:
+                return 'Cash';
+        }
+    }
+
+    getPaymentMethodIcon(paymentMethod) {
+        // Normalize payment method and provide proper icon
+        if (!paymentMethod) return 'fa-money-bill-wave';
+        
+        const method = paymentMethod.toString().toLowerCase().trim();
+        
+        console.log('Payment method for icon:', method);
+        
+        switch (method) {
+            case 'paid':
+            case 'card':
+            case 'credit':
+            case 'online':
+                return 'fa-credit-card';
+            case 'cash':
+            case 'cod':
+            default:
+                return 'fa-money-bill-wave';
+        }
     }
 
     async renderSettingsPage() {
@@ -3799,7 +3922,7 @@ class DeliveryApp {
                         <h4 class="shop-name">${shop.name}</h4>
                         <div class="shop-meta">
                             <i class="fas fa-calendar-plus"></i>
-                            Added ${this.formatTimeAgo(shop.created_at)}
+                            Added ${shop.created_at ? this.formatTimeAgo(shop.created_at) : 'recently'}
                         </div>
                     </div>
                 </div>
@@ -3875,9 +3998,9 @@ class DeliveryApp {
         const deleteBtn = modal.querySelector('.delete-shop-btn');
         const cancelBtn = modal.querySelector('.cancel-btn');
         
-        editBtn.addEventListener('click', () => {
+        editBtn.addEventListener('click', async () => {
             this.closeModal();
-            this.editShop(shopId);
+            await this.editShop(shopId);
         });
         
         deleteBtn.addEventListener('click', () => {
@@ -3950,7 +4073,7 @@ class DeliveryApp {
         
         // Setup menu item actions
         document.querySelectorAll('.shop-menu-item').forEach(item => {
-            item.addEventListener('click', (e) => {
+            item.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 
@@ -3959,7 +4082,7 @@ class DeliveryApp {
                 console.log('Menu item clicked:', action, 'for shop ID:', shopId);
                 
                 if (action === 'edit') {
-                    this.editShop(shopId);
+                    await this.editShop(shopId);
                 } else if (action === 'delete') {
                     this.deleteShop(shopId);
                 }
@@ -6214,27 +6337,32 @@ class DeliveryApp {
         console.log('✅ Created menu container with fixed positioning');
         
         menuContainer.innerHTML = `
-            <!-- Modern Menu Button -->
+            <!-- Clean Modern Actions Button - HIDDEN as requested -->
             <button id="notifications-menu-btn" style="
+                display: none !important;
+                visibility: hidden !important;
                 background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
-                border: none;
-                border-radius: 16px;
                 color: white;
-                padding: 12px 20px;
-                font-size: 14px;
+                border: none;
+                padding: 10px 16px;
+                border-radius: 8px;
                 font-weight: 600;
+                font-size: 14px;
                 cursor: pointer;
-                box-shadow: 0 8px 25px rgba(255, 107, 53, 0.3);
-                transition: all 0.3s ease;
-                display: flex;
                 align-items: center;
                 gap: 8px;
-                backdrop-filter: blur(10px);
-            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 12px 35px rgba(255, 107, 53, 0.4)'"
-               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 25px rgba(255, 107, 53, 0.3)'">
+                box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+                transition: all 0.2s ease;
+            " onmouseover="
+                this.style.background='linear-gradient(135deg, #f7931e 0%, #e55a2b 100%)';
+                this.style.boxShadow='0 4px 12px rgba(255, 107, 53, 0.4)';
+            " onmouseout="
+                this.style.background='linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)';
+                this.style.boxShadow='0 2px 8px rgba(255, 107, 53, 0.3)';
+            ">
                 <i class="fas fa-cog"></i>
                 <span>Actions</span>
-                <i class="fas fa-chevron-down" style="font-size: 10px; transition: transform 0.3s ease;"></i>
+                <i class="fas fa-chevron-down" style="font-size: 12px;"></i>
             </button>
             
             <!-- Modern Dropdown Menu -->
@@ -7266,4 +7394,4 @@ document.addEventListener('DOMContentLoaded', () => {
     deliveryApp = new DeliveryApp();
     // Also make it available on window for onclick handlers
     window.deliveryApp = deliveryApp;
-}); 
+});
