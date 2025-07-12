@@ -578,6 +578,121 @@ app.post('/api/admin/users', async (req, res) => {
     }
 });
 
+// DELETE /api/admin/users/:id - Delete user
+app.delete('/api/admin/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        console.log('Deleting user:', id);
+        
+        // First, check if user exists
+        const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('id, email, user_type')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingUser) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Delete user from database
+        const { error } = await supabase
+            .from('users')
+            .delete()
+            .eq('id', id);
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('User deleted successfully:', id);
+        
+        res.json({
+            success: true,
+            message: 'User deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete user',
+            error: error.message
+        });
+    }
+});
+
+// PUT /api/admin/users/:id - Update user
+app.put('/api/admin/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { email, user_type } = req.body;
+        
+        console.log('Updating user:', id, { email, user_type });
+        
+        // First, check if user exists
+        const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('id, email, user_type')
+            .eq('id', id)
+            .single();
+        
+        if (checkError || !existingUser) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Prepare update data
+        const updateData = {};
+        if (email && email !== existingUser.email) {
+            updateData.email = email;
+        }
+        if (user_type && user_type !== existingUser.user_type) {
+            updateData.user_type = user_type;
+        }
+        
+        // Only update if there are changes
+        if (Object.keys(updateData).length === 0) {
+            return res.json({
+                success: true,
+                message: 'No changes needed',
+                user: existingUser
+            });
+        }
+        
+        // Update user in database
+        const { data, error } = await supabase
+            .from('users')
+            .update(updateData)
+            .eq('id', id)
+            .select('id, email, user_type, created_at')
+            .single();
+        
+        if (error) {
+            throw error;
+        }
+        
+        console.log('User updated successfully:', id);
+        
+        res.json({
+            success: true,
+            user: data
+        });
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update user',
+            error: error.message
+        });
+    }
+});
+
 // GET /api/admin/shop-accounts - Get all shop accounts from database
 app.get('/api/admin/shop-accounts', async (req, res) => {
     try {
@@ -2957,6 +3072,7 @@ app.get('/api/user/settings', authenticateUser, async (req, res) => {
                 return res.json({
                     user_id: req.user.id,
                     earnings_per_order: 1.50,
+                    language: 'en',
                     notificationSettings: {
                         soundEnabled: true,
                         browserEnabled: false
@@ -2976,6 +3092,7 @@ app.get('/api/user/settings', authenticateUser, async (req, res) => {
             const defaultSettings = {
                 user_id: req.user.id,
                 earnings_per_order: 1.50,
+                language: 'en',
                 notificationSettings: {
                     soundEnabled: true,
                     browserEnabled: false
@@ -3088,6 +3205,14 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
         if (updates.notificationSettings !== undefined) {
             validUpdates.notificationSettings = updates.notificationSettings;
         }
+        if (updates.language !== undefined) {
+            // Validate language value
+            if (['en', 'gr'].includes(updates.language)) {
+                validUpdates.language = updates.language;
+            } else {
+                return res.status(400).json({ error: 'Invalid language value. Must be "en" or "gr"' });
+            }
+        }
         validUpdates.updated_at = new Date().toISOString();
         
         console.log('⚙️ Updating settings for user', req.user.id, ':', validUpdates);
@@ -3095,11 +3220,12 @@ app.patch('/api/user/settings', authenticateUser, async (req, res) => {
         // Use upsert to handle both insert and update cases
         const settingsData = {
             user_id: req.user.id,
-            earnings_per_order: validUpdates.earnings_per_order || 1.50,
+            earnings_per_order: validUpdates.earnings_per_order || existingSettings?.earnings_per_order || 1.50,
             notificationSettings: validUpdates.notificationSettings || (existingSettings?.notificationSettings || {
                 soundEnabled: true,
                 browserEnabled: false
             }),
+            language: validUpdates.language || existingSettings?.language || 'en',
             updated_at: new Date().toISOString()
         };
         
@@ -3592,7 +3718,7 @@ app.delete('/api/categories/:id', authenticateUser, async (req, res) => {
 
 // --- ADMIN CATEGORIES API ENDPOINTS (No authentication required) ---
 
-// GET /api/admin/categories - Get all categories for admin dashboard with statistics
+// GET /api/admin/categories - Get all categories for admin dashboard
 app.get('/api/admin/categories', async (req, res) => {
     try {
         console.log('Loading categories for admin dashboard');
@@ -3604,51 +3730,79 @@ app.get('/api/admin/categories', async (req, res) => {
             .order('name');
         
         if (error) {
+            console.error('Supabase error loading categories:', error);
             throw error;
         }
         
-        // Get shop counts for each category from both partner_shops and shop_accounts
-        const categoriesWithStats = await Promise.all(
-            (categories || []).map(async (category) => {
-                // Count partner_shops
-                const { count: partnerShopsCount, error: partnerShopsError } = await supabase
-                    .from('partner_shops')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('category_id', category.id);
-                
-                // Count shop_accounts
-                const { count: shopAccountsCount, error: shopAccountsError } = await supabase
-                    .from('shop_accounts')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('category_id', category.id);
-                
-                const totalShops = (partnerShopsCount || 0) + (shopAccountsCount || 0);
-                
-                if (partnerShopsError) {
-                    console.error(`Error counting partner shops for category ${category.id}:`, partnerShopsError);
-                }
-                if (shopAccountsError) {
-                    console.error(`Error counting shop accounts for category ${category.id}:`, shopAccountsError);
-                }
-                
-                return {
-                    ...category,
-                    shop_count: totalShops,
-                    partner_shops_count: partnerShopsCount || 0,
-                    shop_accounts_count: shopAccountsCount || 0
-                };
-            })
-        );
+        // Get shop counts for each category
+        const categoriesWithCounts = [];
+        
+        for (const category of categories || []) {
+            // Count partner shops for this category
+            const { data: partnerShops, error: partnerError } = await supabase
+                .from('partner_shops')
+                .select('id')
+                .eq('category_id', category.id);
+            
+            // Count shop accounts for this category
+            const { data: shopAccounts, error: shopError } = await supabase
+                .from('shop_accounts')
+                .select('id')
+                .eq('category_id', category.id);
+            
+            const partnerShopsCount = partnerShops?.length || 0;
+            const shopAccountsCount = shopAccounts?.length || 0;
+            const totalShopCount = partnerShopsCount + shopAccountsCount;
+            
+            categoriesWithCounts.push({
+                ...category,
+                shop_count: totalShopCount,
+                partner_shops_count: partnerShopsCount,
+                shop_accounts_count: shopAccountsCount
+            });
+        }
+        
+        console.log(`✅ Loaded ${categoriesWithCounts.length} categories successfully`);
         
         res.json({
             success: true,
-            categories: categoriesWithStats
+            categories: categoriesWithCounts
         });
     } catch (error) {
         console.error('Error loading categories:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to load categories',
+            error: error.message
+        });
+    }
+});
+
+// Simple test endpoint for categories
+app.get('/api/admin/categories/test', async (req, res) => {
+    try {
+        console.log('Testing categories table connection...');
+        
+        // Test basic connection
+        const { data, error } = await supabase
+            .from('categories')
+            .select('id, name')
+            .limit(1);
+        
+        if (error) {
+            throw error;
+        }
+        
+        res.json({
+            success: true,
+            message: 'Categories table connection successful',
+            sample_data: data
+        });
+    } catch (error) {
+        console.error('Categories test failed:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Categories test failed',
             error: error.message
         });
     }

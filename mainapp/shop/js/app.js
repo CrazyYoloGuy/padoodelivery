@@ -2065,7 +2065,6 @@ class ShopApp {
             <div class="notifications-container">
                 <div class="notifications-header">
                     <h2><i class="fas fa-bell"></i> Notifications</h2>
-                    <p>View all notifications and their confirmation status</p>
                 </div>
                 
                 <div class="notifications-stats-bar">

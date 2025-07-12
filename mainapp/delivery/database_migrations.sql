@@ -295,3 +295,30 @@ BEGIN
         ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20) DEFAULT 'cash';
     END IF;
 END $$; 
+
+-- Add language field to user_settings table
+-- This migration adds a language preference field to store user's language choice
+
+-- Add the language column to user_settings table
+ALTER TABLE public.user_settings 
+ADD COLUMN IF NOT EXISTS language character varying(5) DEFAULT 'en';
+
+-- Add a check constraint to ensure only valid language codes are stored
+ALTER TABLE public.user_settings 
+ADD CONSTRAINT user_settings_language_check 
+CHECK (language IN ('en', 'el'));
+
+-- Create an index for better performance when filtering by language
+CREATE INDEX IF NOT EXISTS idx_user_settings_language 
+ON public.user_settings(language);
+
+-- Add a comment to document the column
+COMMENT ON COLUMN public.user_settings.language IS 'User preferred language: en for English, el for Greek';
+
+-- Update existing records to have default language 'en'
+UPDATE public.user_settings 
+SET language = 'en' 
+WHERE language IS NULL;
+
+-- Migration completed successfully
+SELECT 'Language settings migration completed successfully!' as result; 

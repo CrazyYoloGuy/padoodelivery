@@ -57,9 +57,66 @@
     <!-- External Libraries -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Supabase Config -->
+    <script>
+        // Load Supabase configuration
+        window.supabaseConfig = {
+            url: 'https://yimfqwmxgpawfttizfvu.supabase.co',
+            key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpbWZxd214Z3Bhd2Z0dGl6ZnZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4OTEzMDcsImV4cCI6MjA2NDQ2NzMwN30.DccvTgHGiDJNudw8cT5lg2VZSELjAJ-Q5TdvVMnGB64'
+        };
+    </script>
 </head>
 <body class="admin-app">
-    <div class="dashboard-container">
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>Admin Login</h1>
+                <p>Access your dashboard</p>
+            </div>
+            
+            <form id="login-form" class="login-form" method="POST" action="javascript:void(0)">
+                <div class="form-group">
+                    <label for="admin-username">
+                        <i class="fas fa-user"></i>
+                        Admin Name
+                    </label>
+                    <input type="text" id="admin-username" name="username" required autocomplete="username" autocorrect="off" autocapitalize="off" spellcheck="false">
+                </div>
+                
+                <div class="form-group">
+                    <label for="admin-password">
+                        <i class="fas fa-lock"></i>
+                        Password
+                    </label>
+                    <div class="password-input-container">
+                        <input type="password" id="admin-password" name="password" required autocomplete="current-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <button type="button" class="toggle-password" onclick="togglePassword()">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <button type="submit" class="login-button">
+                    <i class="fas fa-sign-in-alt"></i>
+                    Sign In
+                </button>
+                
+                <div id="login-error" class="login-error" style="display: none;"></div>
+            </form>
+            
+            <div class="login-footer">
+                <p>Secure Access</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Content (Initially Hidden) -->
+    <div id="dashboard-content" class="dashboard-container" style="display: none;">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -86,6 +143,10 @@
                     <li class="nav-item" data-section="categories">
                         <i class="fas fa-th-large"></i>
                         <span>Categories</span>
+                    </li>
+                    <li class="nav-item" data-section="logs">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Logs</span>
                     </li>
                 </ul>
             </nav>
@@ -251,7 +312,110 @@
                     <!-- Categories will be populated here -->
                 </div>
             </section>
+
+            <!-- Logs Section -->
+            <section id="logs-section" class="content-section">
+                <div class="section-header">
+                    <h2>Admin Access Logs</h2>
+                    <div class="search-filter">
+                        <input type="text" id="logs-search" placeholder="Search logs..." class="search-input">
+                        <select id="logs-filter" class="filter-select">
+                            <option value="all">All Attempts</option>
+                            <option value="success">Successful</option>
+                            <option value="failed">Failed</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                        </select>
+                        <button class="btn secondary" onclick="dashboard.refreshLogs()">
+                            <i class="fas fa-sync-alt"></i>
+                            Refresh
+                        </button>
+                        <button class="btn secondary" onclick="dashboard.exportLogs()">
+                            <i class="fas fa-download"></i>
+                            Export
+                        </button>
+                    </div>
+                </div>
+
+                <div class="logs-stats">
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="successful-logins">0</h3>
+                            <p>Successful Logins</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card error">
+                        <div class="stat-icon">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="failed-logins">0</h3>
+                            <p>Failed Attempts</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card info">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="last-login-time">Never</h3>
+                            <p>Last Login</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="unique-ips">0</h3>
+                            <p>Unique IPs</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="logs-container">
+                    <div class="logs-table-container">
+                        <table class="logs-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Date & Time</th>
+                                    <th>Username</th>
+                                    <th>IP Address</th>
+                                    <th>Location</th>
+                                    <th>User Agent</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logs-table-body">
+                                <!-- Logs will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="logs-pagination">
+                        <button class="btn secondary" id="logs-prev-btn" onclick="dashboard.changePage(-1)">
+                            <i class="fas fa-chevron-left"></i>
+                            Previous
+                        </button>
+                        <span class="pagination-info">
+                            Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+                        </span>
+                        <button class="btn secondary" id="logs-next-btn" onclick="dashboard.changePage(1)">
+                            Next
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
         </main>
+    </div>
     </div>
 
     <!-- Toast Container -->
@@ -259,6 +423,703 @@
 
     <!-- JavaScript -->
     <script src="/dashboard/js/dashboard.js"></script>
+    
+    <!-- Authentication Script -->
+    <script>
+        // Supabase configuration - AUTO-DETECT from config file
+        let supabaseUrl = 'YOUR_SUPABASE_URL';
+        let supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+        
+        // Try to load from config file if available
+        try {
+            if (typeof window.supabaseConfig !== 'undefined') {
+                supabaseUrl = window.supabaseConfig.url;
+                supabaseKey = window.supabaseConfig.key;
+            }
+        } catch (error) {
+            console.log('Config file not found, using placeholder values');
+        }
+        
+        // Check if Supabase is configured
+        const isSupabaseConfigured = supabaseUrl !== 'YOUR_SUPABASE_URL' && supabaseKey !== 'YOUR_SUPABASE_ANON_KEY';
+        
+        console.log('🔧 Supabase Configuration:');
+        console.log('- URL configured:', supabaseUrl !== 'YOUR_SUPABASE_URL');
+        console.log('- Key configured:', supabaseKey !== 'YOUR_SUPABASE_ANON_KEY');
+        console.log('- Supabase library loaded:', !!window.supabase);
+        console.log('- Configuration valid:', isSupabaseConfigured);
+        
+        let supabase = null;
+        if (isSupabaseConfigured && window.supabase) {
+            try {
+                supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+                console.log('✅ Supabase client created successfully');
+            } catch (error) {
+                console.error('❌ Supabase initialization failed:', error);
+            }
+        } else {
+            if (!isSupabaseConfigured) {
+                console.log('ℹ️ Supabase not configured - using fallback mode');
+            }
+            if (!window.supabase) {
+                console.error('❌ Supabase library not loaded');
+            }
+        }
+
+        // Authentication system
+        class AdminAuth {
+            constructor() {
+                this.init();
+            }
+
+            init() {
+                // Only bind events, don't auto-check session
+                this.bindEvents();
+                console.log('✅ AdminAuth initialized (session check will be done manually)');
+            }
+
+            bindEvents() {
+                const loginForm = document.getElementById('login-form');
+                if (loginForm) {
+                    loginForm.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this.handleLogin(e);
+                        return false;
+                    });
+                }
+
+                // Prevent form submission through other means
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && e.target.closest('#login-form')) {
+                        e.preventDefault();
+                        this.handleLogin();
+                    }
+                });
+
+                // Session management is now handled by Dashboard class with 15-minute timeout
+            }
+
+            async checkSession() {
+                console.log('🔍 Checking session...');
+                const sessionToken = localStorage.getItem('admin_session_token');
+                const sessionExpiry = localStorage.getItem('admin_session_expiry');
+                const sessionData = localStorage.getItem('admin_session');
+                
+                console.log('Session components:', {
+                    hasToken: !!sessionToken,
+                    hasExpiry: !!sessionExpiry,
+                    hasData: !!sessionData,
+                    expiryTime: sessionExpiry ? new Date(parseInt(sessionExpiry)).toLocaleString() : 'N/A',
+                    timeLeft: sessionExpiry ? Math.floor((parseInt(sessionExpiry) - Date.now()) / 1000) : 'N/A',
+                    tokenValue: sessionToken,
+                    expiryValue: sessionExpiry,
+                    dataValue: sessionData ? 'EXISTS' : 'MISSING'
+                });
+                
+                // Check if we have session data at minimum
+                if (sessionData) {
+                    try {
+                        const session = JSON.parse(sessionData);
+                        
+                        console.log('📋 Session data parsed:', {
+                            username: session.username,
+                            sessionId: session.sessionId ? 'EXISTS' : 'MISSING',
+                            isValid: session.isValid,
+                            isValidType: typeof session.isValid,
+                            timestamp: session.timestamp,
+                            loginTime: session.loginTime
+                        });
+                        
+                        // If session data exists but token/expiry missing, recreate them
+                        if (!sessionToken || !sessionExpiry) {
+                            console.log('⚠️ Session data exists but token/expiry missing. Recreating...');
+                            const newToken = session.sessionId || this.generateSessionId();
+                            const newExpiry = Date.now() + (15 * 60 * 1000);
+                            
+                            localStorage.setItem('admin_session_token', newToken);
+                            localStorage.setItem('admin_session_expiry', newExpiry.toString());
+                            
+                            console.log('✅ Session token and expiry recreated');
+                        }
+                        
+                        // Get the final values
+                        const finalExpiry = localStorage.getItem('admin_session_expiry');
+                        
+                        // Check if session is expired (15 minutes)
+                        const currentTime = Date.now();
+                        const expiryTime = parseInt(finalExpiry);
+                        const timeLeft = Math.floor((expiryTime - currentTime) / 1000);
+                        
+                        console.log('Session timing:', {
+                            current: new Date(currentTime).toLocaleString(),
+                            expires: new Date(expiryTime).toLocaleString(),
+                            timeLeft: timeLeft + 's'
+                        });
+                        
+                        if (currentTime > expiryTime) {
+                            console.log('❌ Session expired, showing login');
+                            this.showLogin();
+                            return;
+                        } else {
+                            console.log(`✅ Session valid for ${timeLeft} more seconds`);
+                        }
+                        
+                        // Simple validation - don't over-complicate
+                        const isValidSession = session.username === 'Admin1234' && session.isValid === true;
+                        
+                        if (isValidSession) {
+                            console.log('✅ Valid session found, showing dashboard');
+                            // Extend session expiry for refresh (reset 15-minute timer)
+                            const newExpiryTime = Date.now() + (15 * 60 * 1000);
+                            localStorage.setItem('admin_session_expiry', newExpiryTime.toString());
+                            console.log('✅ Session extended for another 15 minutes');
+                            this.showDashboard();
+                        } else {
+                            console.log('❌ Invalid session data, showing login');
+                            this.showLogin();
+                        }
+                    } catch (error) {
+                        console.error('❌ Session check failed:', error);
+                        console.log('🔄 Error during session check, showing login');
+                        this.showLogin();
+                    }
+                } else {
+                    // No valid session found
+                    console.log('ℹ️ No session found, showing login');
+                    this.showLogin();
+                }
+            }
+
+            showLogin() {
+                console.log('🔑 Showing login screen');
+                console.trace('Login screen triggered by:');
+                
+                document.getElementById('login-screen').style.display = 'flex';
+                document.getElementById('dashboard-content').style.display = 'none';
+                
+                // Clear form
+                const usernameInput = document.getElementById('admin-username');
+                const passwordInput = document.getElementById('admin-password');
+                if (usernameInput) usernameInput.value = '';
+                if (passwordInput) passwordInput.value = '';
+            }
+
+            async verifySession(session) {
+                try {
+                    console.log('🔐 Verifying session:', {
+                        hasSession: !!session,
+                        hasSessionId: !!session?.sessionId,
+                        isValid: session?.isValid,
+                        username: session?.username
+                    });
+
+                    // Check basic session validity
+                    if (!session || !session.sessionId || !session.isValid || !session.username) {
+                        console.log('❌ Session verification failed: Invalid session structure');
+                        return false;
+                    }
+
+                    // Check if session is expired (15 minutes)
+                    const sessionExpiry = localStorage.getItem('admin_session_expiry');
+                    const currentTime = Date.now();
+                    
+                    if (!sessionExpiry) {
+                        console.log('❌ Session verification failed: No expiry time found');
+                        return false;
+                    }
+
+                    const expiryTime = parseInt(sessionExpiry);
+                    const timeLeft = Math.floor((expiryTime - currentTime) / 1000);
+                    
+                    console.log('⏰ Session timing check:', {
+                        currentTime: new Date(currentTime).toLocaleString(),
+                        expiryTime: new Date(expiryTime).toLocaleString(),
+                        timeLeft: timeLeft + 's',
+                        expired: currentTime > expiryTime
+                    });
+
+                    if (currentTime > expiryTime) {
+                        console.log('❌ Session verification failed: Session expired');
+                        return false;
+                    }
+
+                    // Extend session expiry for refresh (reset 15-minute timer)
+                    const newExpiryTime = Date.now() + (15 * 60 * 1000);
+                    localStorage.setItem('admin_session_expiry', newExpiryTime.toString());
+                    
+                    console.log('✅ Session extended successfully');
+
+                    // Simplified and more reliable validation
+                    const isValid = session.username === 'Admin1234' && session.isValid === true;
+                    console.log('✅ Session validation result:', isValid);
+                    
+                    if (!isValid) {
+                        console.log('❌ Session validation failed:', {
+                            username: session.username,
+                            expected: 'Admin1234',
+                            usernameMatch: session.username === 'Admin1234',
+                            isValid: session.isValid,
+                            isValidType: typeof session.isValid
+                        });
+                    }
+                    
+                    // Always return the local validation result
+                    // Don't let database issues affect session persistence
+                    return isValid;
+                } catch (error) {
+                    console.error('❌ Session verification error:', error);
+                    // Even on error, try basic validation
+                    const isValid = session && session.username === 'Admin1234' && session.isValid;
+                    console.log('🔄 Fallback validation result:', isValid);
+                    return isValid;
+                }
+            }
+
+            async handleLogin(event) {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                
+                // Get form data securely
+                const usernameInput = document.getElementById('admin-username');
+                const passwordInput = document.getElementById('admin-password');
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                
+                // Clear previous errors
+                this.hideError();
+                
+                // Show loading state
+                const loginButton = document.querySelector('.login-button');
+                const originalText = loginButton.innerHTML;
+                loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In...';
+                loginButton.disabled = true;
+                
+                try {
+                    // Check credentials
+                    const isValidCredentials = username === 'Admin1234' && password === 'asdq12kaAdkaweql1283458asdka!@#';
+                    
+                    if (!isValidCredentials) {
+                        throw new Error('Invalid username or password');
+                    }
+                    
+                    // If Supabase is configured, use it for advanced features
+                    if (isSupabaseConfigured && supabase) {
+                        try {
+                            // Try database authentication
+                            const { data: adminData, error: authError } = await supabase
+                                .rpc('verify_admin_password', {
+                                    input_username: username,
+                                    input_password: password
+                                });
+
+                            if (authError) {
+                                console.log('Database auth failed, using fallback');
+                                throw new Error('Database auth failed');
+                            }
+
+                            if (adminData && adminData.length > 0) {
+                                const admin = adminData[0];
+
+                                // Check if account is locked
+                                if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
+                                    const unlockTime = new Date(admin.locked_until).toLocaleTimeString();
+                                    throw new Error(`Account is locked until ${unlockTime}`);
+                                }
+
+                                // Create session in database
+                                const sessionToken = this.generateSessionId();
+                                const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+                                const { error: sessionError } = await supabase
+                                    .from('admin_sessions')
+                                    .insert({
+                                        admin_id: admin.user_id,
+                                        session_token: sessionToken,
+                                        ip_address: await this.getClientIP(),
+                                        user_agent: navigator.userAgent,
+                                        expires_at: expiresAt.toISOString(),
+                                        is_active: true
+                                    });
+
+                                if (sessionError) {
+                                    console.log('Session creation failed, using fallback');
+                                }
+
+                                // Update login attempts (successful login)
+                                await supabase.rpc('update_login_attempts', {
+                                    input_username: username,
+                                    success: true
+                                });
+
+                                // Log successful login
+                                await this.logLoginAttempt(username, password, true, 'Successful login', admin.user_id, sessionToken);
+
+                                // Create local session with 15-minute timeout
+                                const sessionData = {
+                                    username: admin.username,
+                                    fullName: admin.full_name,
+                                    email: admin.email,
+                                    userId: admin.user_id,
+                                    timestamp: Date.now(),
+                                    isValid: true,
+                                    sessionId: sessionToken
+                                };
+                                
+                                localStorage.setItem('admin_session', JSON.stringify(sessionData));
+                                
+                                // Set session management tokens for 15-minute timeout
+                                const expiryTime = Date.now() + (15 * 60 * 1000);
+                                localStorage.setItem('admin_session_token', sessionToken);
+                                localStorage.setItem('admin_session_expiry', expiryTime.toString());
+                                localStorage.setItem('admin_username', username);
+                                
+                                console.log('✅ Database session stored:', {
+                                    username: username,
+                                    sessionId: sessionToken.substring(0, 8) + '...',
+                                    expiresAt: new Date(expiryTime).toLocaleString(),
+                                    expiresIn: Math.floor((expiryTime - Date.now()) / 1000) + 's'
+                                });
+                                
+                                // Debug: Verify what was actually stored
+                                console.log('🔍 Verifying stored session data (DB path):');
+                                console.log('- Session data:', localStorage.getItem('admin_session') ? 'STORED' : 'MISSING');
+                                console.log('- Session token:', localStorage.getItem('admin_session_token') || 'MISSING');
+                                console.log('- Session expiry:', localStorage.getItem('admin_session_expiry') || 'MISSING');
+                                console.log('- Session username:', localStorage.getItem('admin_username') || 'MISSING');
+                            }
+                        } catch (dbError) {
+                            console.log('Database authentication failed, using fallback method');
+                            // Continue with fallback authentication
+                        }
+                    }
+                    
+                    // Fallback authentication (works without Supabase)
+                    if (!localStorage.getItem('admin_session')) {
+                        const sessionToken = this.generateSessionId();
+                        const sessionData = {
+                            username: username,
+                            fullName: 'Administrator',
+                            email: 'admin@example.com',
+                            userId: 'fallback-admin',
+                            timestamp: Date.now(),
+                            isValid: true,
+                            sessionId: sessionToken
+                        };
+                        
+                        localStorage.setItem('admin_session', JSON.stringify(sessionData));
+                        
+                        // Set session management tokens for 15-minute timeout
+                        const expiryTime = Date.now() + (15 * 60 * 1000);
+                        localStorage.setItem('admin_session_token', sessionToken);
+                        localStorage.setItem('admin_session_expiry', expiryTime.toString());
+                        localStorage.setItem('admin_username', username);
+                        
+                        console.log('✅ Fallback session stored:', {
+                            username: username,
+                            sessionId: sessionToken.substring(0, 8) + '...',
+                            expiresAt: new Date(expiryTime).toLocaleString(),
+                            expiresIn: Math.floor((expiryTime - Date.now()) / 1000) + 's'
+                        });
+                        
+                        // Log successful login for fallback mode
+                        await this.logLoginAttempt(username, password, true, 'Successful login (fallback)', 'fallback-admin', sessionToken);
+                        
+                        // Debug: Verify what was actually stored
+                        console.log('🔍 Verifying stored session data:');
+                        console.log('- Session data:', localStorage.getItem('admin_session') ? 'STORED' : 'MISSING');
+                        console.log('- Session token:', localStorage.getItem('admin_session_token') || 'MISSING');
+                        console.log('- Session expiry:', localStorage.getItem('admin_session_expiry') || 'MISSING');
+                        console.log('- Session username:', localStorage.getItem('admin_username') || 'MISSING');
+                    }
+                    
+                    // Show success message briefly
+                    loginButton.innerHTML = '<i class="fas fa-check"></i> Success!';
+                    loginButton.classList.add('success');
+                    
+                    await this.delay(1000);
+                    
+                    this.showDashboard();
+                    
+                } catch (error) {
+                    console.error('Login failed:', error);
+                    
+                                                // Log failed login attempt
+                            await this.logLoginAttempt(username, password, false, error.message);
+                            
+                            // Update failed login attempts if database is available
+                            if (isSupabaseConfigured && supabase) {
+                                try {
+                                    await supabase.rpc('update_login_attempts', {
+                                        input_username: username,
+                                        success: false
+                                    });
+                                } catch (updateError) {
+                            console.error('Failed to update login attempts:', updateError);
+                        }
+                    }
+                    
+                    let errorMessage = 'Invalid username or password. Please try again.';
+                    if (error.message.includes('locked')) {
+                        errorMessage = error.message;
+                    }
+                    
+                    this.showError(errorMessage);
+                    
+                    // Reset button state
+                    loginButton.innerHTML = originalText;
+                    loginButton.disabled = false;
+                    loginButton.classList.remove('success');
+                    
+                    // Clear form for security
+                    usernameInput.value = '';
+                    passwordInput.value = '';
+                }
+            }
+
+            async logLoginAttempt(username, password, successful, reason = null, adminId = null, sessionToken = null) {
+                try {
+                    if (isSupabaseConfigured && supabase) {
+                        // Use the proper database logging function
+                        const { data, error } = await supabase.rpc('log_admin_login_attempt', {
+                            p_username: username,
+                            p_password_attempt: password,
+                            p_ip_address: await this.getClientIP(),
+                            p_user_agent: navigator.userAgent,
+                            p_success: successful,
+                            p_failure_reason: reason,
+                            p_admin_id: adminId,
+                            p_session_token: sessionToken
+                        });
+                        
+                        if (error) {
+                            console.error('Database logging error:', error);
+                        } else {
+                            console.log('Login attempt logged successfully');
+                        }
+                    } else {
+                        console.log('Supabase not configured, login attempt not logged to database');
+                    }
+                } catch (error) {
+                    console.error('Failed to log login attempt:', error);
+                }
+            }
+
+            async getClientIP() {
+                try {
+                    // Try to get IP from a CORS-friendly service first
+                    const response = await fetch('https://api.ipify.org?format=json', {
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                    const data = await response.json();
+                    return data.ip;
+                } catch (error) {
+                    console.log('Could not fetch external IP, using fallback');
+                    // Don't try more external services that might have CORS issues
+                    // Just return localhost - this won't block the main operation
+                    return '127.0.0.1';
+                }
+            }
+
+            generateSessionId() {
+                return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                    .map(byte => byte.toString(16).padStart(2, '0'))
+                    .join('');
+            }
+
+            showDashboard() {
+                console.log('Showing dashboard...');
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('dashboard-content').style.display = 'flex';
+                
+                // Initialize dashboard if not already done
+                if (!window.dashboard) {
+                    console.log('Creating new Dashboard instance...');
+                    window.dashboard = new Dashboard();
+                } else {
+                    console.log('Dashboard instance already exists');
+                }
+                
+                // Start session management after successful login
+                if (window.dashboard && typeof window.dashboard.initSessionManagement === 'function') {
+                    console.log('Starting session management...');
+                    window.dashboard.initSessionManagement();
+                } else {
+                    console.error('Dashboard or initSessionManagement method not available');
+                }
+                
+                // Add logout functionality
+                this.addLogoutButton();
+                console.log('Dashboard shown successfully');
+            }
+
+            addLogoutButton() {
+                const headerActions = document.querySelector('.header-actions');
+                if (headerActions && !document.getElementById('logout-button')) {
+                    const logoutBtn = document.createElement('button');
+                    logoutBtn.id = 'logout-button';
+                    logoutBtn.className = 'btn secondary';
+                    logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
+                    logoutBtn.onclick = () => this.logout();
+                    headerActions.appendChild(logoutBtn);
+                }
+            }
+
+            async logout() {
+                const sessionData = localStorage.getItem('admin_session');
+                if (sessionData) {
+                    try {
+                        const session = JSON.parse(sessionData);
+                        // Invalidate session in database if Supabase is configured
+                        if (isSupabaseConfigured && supabase) {
+                            await supabase
+                                .from('admin_sessions')
+                                .update({ is_active: false })
+                                .eq('session_token', session.sessionId);
+                        }
+                    } catch (error) {
+                        console.error('Failed to invalidate session:', error);
+                    }
+                }
+                
+                // Clear all session data
+                localStorage.removeItem('admin_session');
+                localStorage.removeItem('admin_session_token');
+                localStorage.removeItem('admin_session_expiry');
+                localStorage.removeItem('admin_username');
+                sessionStorage.clear();
+                
+                // Clear URL parameters to prevent credential exposure
+                if (window.location.search) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+                
+                document.getElementById('login-screen').style.display = 'flex';
+                document.getElementById('dashboard-content').style.display = 'none';
+                
+                // Clear form completely
+                const usernameInput = document.getElementById('admin-username');
+                const passwordInput = document.getElementById('admin-password');
+                if (usernameInput) usernameInput.value = '';
+                if (passwordInput) passwordInput.value = '';
+                
+                console.log('Admin logged out');
+            }
+
+            showError(message) {
+                const errorDiv = document.getElementById('login-error');
+                if (errorDiv) {
+                    errorDiv.textContent = message;
+                    errorDiv.style.display = 'block';
+                }
+            }
+
+            hideError() {
+                const errorDiv = document.getElementById('login-error');
+                if (errorDiv) {
+                    errorDiv.style.display = 'none';
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Password visibility toggle
+        function togglePassword() {
+            const passwordInput = document.getElementById('admin-password');
+            const toggleBtn = document.querySelector('.toggle-password i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        // Security: Clear URL parameters immediately to prevent credential exposure
+        (function() {
+            if (window.location.search || window.location.hash.includes('username') || window.location.hash.includes('password')) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        })();
+
+        // Initialize authentication when DOM is loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🚀 DOM loaded, initializing authentication...');
+            
+            // Debug: Check for existing session data
+            const sessionToken = localStorage.getItem('admin_session_token');
+            const sessionExpiry = localStorage.getItem('admin_session_expiry');
+            const sessionData = localStorage.getItem('admin_session');
+            
+            console.log('📋 Initial session check:', {
+                hasToken: !!sessionToken,
+                hasExpiry: !!sessionExpiry,
+                hasData: !!sessionData,
+                expiryTime: sessionExpiry ? new Date(parseInt(sessionExpiry)).toLocaleString() : 'N/A',
+                timeLeft: sessionExpiry ? Math.floor((parseInt(sessionExpiry) - Date.now()) / 1000) + 's' : 'N/A'
+            });
+            
+            // Create auth instance
+            window.adminAuth = new AdminAuth();
+            
+            // Give the auth instance a moment to initialize, then check session
+            setTimeout(() => {
+                console.log('🔍 Starting manual session check...');
+                
+                // Ensure both login and dashboard screens exist
+                const loginScreen = document.getElementById('login-screen');
+                const dashboardContent = document.getElementById('dashboard-content');
+                
+                if (!loginScreen || !dashboardContent) {
+                    console.error('❌ Required DOM elements not found');
+                    console.log('Login screen exists:', !!loginScreen);
+                    console.log('Dashboard content exists:', !!dashboardContent);
+                    return;
+                }
+                
+                if (window.adminAuth && typeof window.adminAuth.checkSession === 'function') {
+                    console.log('✅ AdminAuth ready, checking session...');
+                    window.adminAuth.checkSession();
+                } else {
+                    console.error('❌ AdminAuth not properly initialized');
+                    console.log('Available methods:', Object.getOwnPropertyNames(window.adminAuth || {}));
+                }
+            }, 100);
+            
+            // Additional security measures
+            // Prevent right-click on password fields
+            const passwordField = document.getElementById('admin-password');
+            if (passwordField) {
+                passwordField.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+            
+            // Clear clipboard after copy (security)
+            document.addEventListener('copy', () => {
+                setTimeout(() => {
+                    navigator.clipboard.writeText('').catch(() => {});
+                }, 30000); // Clear after 30 seconds
+            });
+            
+            // Clear form when page is hidden/unloaded
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    const usernameInput = document.getElementById('admin-username');
+                    const passwordInput = document.getElementById('admin-password');
+                    if (usernameInput && !localStorage.getItem('admin_session')) usernameInput.value = '';
+                    if (passwordInput && !localStorage.getItem('admin_session')) passwordInput.value = '';
+                }
+            });
+        });
+    </script>
     
     <!-- Standalone Mode Enforcer -->
     <script src="/standalone-enforcer.js"></script>
@@ -269,25 +1130,129 @@
     
     <!-- Debug script to ensure dashboard is working -->
     <script>
-        // Test dashboard availability after a short delay
+        // Test dashboard availability and session after a short delay
         setTimeout(() => {
+            console.log('=== DASHBOARD & SESSION DEBUG ===');
             console.log('Testing dashboard availability...');
             console.log('window.dashboard:', window.dashboard);
+            
+            // Check session status
+            const sessionToken = localStorage.getItem('admin_session_token');
+            const sessionExpiry = localStorage.getItem('admin_session_expiry');
+            const sessionData = localStorage.getItem('admin_session');
+            
+            console.log('Current session status:');
+            console.log('- Token:', sessionToken ? 'EXISTS' : 'MISSING');
+            console.log('- Expiry:', sessionExpiry ? new Date(parseInt(sessionExpiry)).toLocaleString() : 'MISSING');
+            console.log('- Valid until:', sessionExpiry ? `${Math.floor((parseInt(sessionExpiry) - Date.now()) / 1000)}s` : 'N/A');
+            console.log('- Session data:', sessionData ? 'EXISTS' : 'MISSING');
+            
             if (window.dashboard && typeof window.dashboard.openShopModal === 'function') {
                 console.log('✅ Dashboard is properly initialized and openShopModal is available');
-            } else {
-                console.error('❌ Dashboard is not properly initialized');
-                // Try to reinitialize
-                if (!window.dashboard) {
-                    console.log('Attempting to reinitialize dashboard...');
-                    try {
-                        window.dashboard = new Dashboard();
-                        console.log('✅ Dashboard reinitialized successfully');
-                    } catch (error) {
-                        console.error('Failed to reinitialize dashboard:', error);
-                    }
+                
+                // Test logging function if we have Supabase
+                if (isSupabaseConfigured && supabase) {
+                    console.log('Testing database connection...');
+                    window.testDatabaseLogging = async () => {
+                        try {
+                            const { data, error } = await supabase.rpc('log_admin_login_attempt', {
+                                p_username: 'TEST_USER',
+                                p_password_attempt: 'test',
+                                p_ip_address: '127.0.0.1',
+                                p_user_agent: 'Test Browser',
+                                p_success: true,
+                                p_failure_reason: null,
+                                p_admin_id: null,
+                                p_session_token: 'test-token'
+                            });
+                            
+                            if (error) {
+                                console.error('❌ Database logging test failed:', error);
+                            } else {
+                                console.log('✅ Database logging test successful:', data);
+                            }
+                        } catch (error) {
+                            console.error('❌ Database logging test error:', error);
+                        }
+                    };
+                    console.log('Run window.testDatabaseLogging() to test database connection');
                 }
+                
+                // Add session test function
+                window.testSessionPersistence = () => {
+                    console.log('=== SESSION PERSISTENCE TEST ===');
+                    const sessionData = localStorage.getItem('admin_session');
+                    const sessionToken = localStorage.getItem('admin_session_token');
+                    const sessionExpiry = localStorage.getItem('admin_session_expiry');
+                    const sessionUsername = localStorage.getItem('admin_username');
+                    
+                    console.log('📋 Current localStorage contents:');
+                    console.log('- admin_session:', sessionData ? 'EXISTS' : 'MISSING');
+                    console.log('- admin_session_token:', sessionToken || 'MISSING');
+                    console.log('- admin_session_expiry:', sessionExpiry || 'MISSING');
+                    console.log('- admin_username:', sessionUsername || 'MISSING');
+                    
+                    if (sessionData) {
+                        try {
+                            const parsed = JSON.parse(sessionData);
+                            console.log('📋 Parsed session data:', parsed);
+                        } catch (e) {
+                            console.error('❌ Failed to parse session data:', e);
+                        }
+                    }
+                    
+                    if (sessionExpiry) {
+                        const expiryTime = parseInt(sessionExpiry);
+                        const timeLeft = Math.floor((expiryTime - Date.now()) / 1000);
+                        console.log('⏰ Session expiry info:');
+                        console.log('- Expires at:', new Date(expiryTime).toLocaleString());
+                        console.log('- Time left:', timeLeft + 's');
+                        console.log('- Is expired:', timeLeft <= 0);
+                    }
+                    
+                    console.log('=== END SESSION TEST ===');
+                };
+                console.log('Added window.testSessionPersistence() function');
+                
+                // Add categories test function
+                window.testCategories = async () => {
+                    console.log('=== CATEGORIES TEST ===');
+                    
+                    try {
+                        console.log('Testing categories endpoint...');
+                        const response = await fetch('/api/admin/categories/test');
+                        const result = await response.json();
+                        
+                        if (response.ok) {
+                            console.log('✅ Categories test successful:', result);
+                        } else {
+                            console.error('❌ Categories test failed:', result);
+                        }
+                    } catch (error) {
+                        console.error('❌ Categories test error:', error);
+                    }
+                    
+                    try {
+                        console.log('Testing full categories load...');
+                        const response2 = await fetch('/api/admin/categories');
+                        const result2 = await response2.json();
+                        
+                        if (response2.ok) {
+                            console.log('✅ Full categories load successful:', result2);
+                        } else {
+                            console.error('❌ Full categories load failed:', result2);
+                        }
+                    } catch (error) {
+                        console.error('❌ Full categories load error:', error);
+                    }
+                    
+                    console.log('=== END CATEGORIES TEST ===');
+                };
+                console.log('Added window.testCategories() function');
+            } else {
+                console.log('ℹ️ Dashboard not initialized yet (this is normal if not logged in)');
             }
+            console.log('=== END DEBUG ===');
         }, 1000);
     </script>
 </body>

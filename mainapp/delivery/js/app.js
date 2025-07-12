@@ -29,6 +29,9 @@ class DeliveryApp {
         
         // Initialize the app
         this.init();
+        
+        // Initialize translation system
+        this.initTranslations();
     }
     
     async init() {
@@ -520,30 +523,58 @@ class DeliveryApp {
     }
     
     formatTimeAgo(dateString) {
+        // Handle invalid or missing date
+        if (!dateString) {
+            return window.t ? window.t('recently') : 'recently';
+        }
+        
         // Use same logic as shop app for consistency
         const notificationDate = new Date(dateString);
+        
+        // Check if date is valid
+        if (isNaN(notificationDate.getTime())) {
+            return window.t ? window.t('recently') : 'recently';
+        }
+        
         const now = new Date();
         const diffInSeconds = Math.floor((now - notificationDate) / 1000);
+        const diffInMinutes = Math.floor(diffInSeconds / 60);
+        const diffInHours = Math.floor(diffInMinutes / 60);
+        const diffInDays = Math.floor(diffInHours / 24);
         
-        // For very recent notifications (less than 30 seconds), show "Τώρα"
+        // For very recent notifications (less than 30 seconds), show "just now"
         if (diffInSeconds < 30) {
-            return 'Τώρα';
+            return window.t ? window.t('justNow') : 'just now';
         }
         
-        // For today's notifications, show time only in Greek format
-        // Convert both dates to Greece timezone for comparison
-        const notificationDateGreece = new Date(notificationDate.toLocaleString("en-US", {timeZone: "Europe/Athens"}));
-        const nowGreece = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Athens"}));
-        const isToday = notificationDateGreece.toDateString() === nowGreece.toDateString();
-        
-        if (isToday) {
-            // Display the time in Greek timezone
-            return new Intl.DateTimeFormat('el-GR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'Europe/Athens'
-            }).format(notificationDate);
+        // For less than a minute
+        if (diffInMinutes < 1) {
+            return window.t ? `${diffInSeconds} seconds ago` : `${diffInSeconds} seconds ago`;
         }
+        
+        // For less than an hour
+        if (diffInMinutes < 60) {
+            return window.t ? `${diffInMinutes} ${window.t('minutesAgo')}` : `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
+        }
+        
+        // For less than a day
+        if (diffInHours < 24) {
+            return window.t ? `${diffInHours} ${window.t('hoursAgo')}` : `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+        }
+        
+        // For less than a week
+        if (diffInDays < 7) {
+            return window.t ? `${diffInDays} ${window.t('daysAgo')}` : `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+        }
+        
+        // For older dates, show the actual date
+        const locale = window.i18n ? (window.i18n.getCurrentLanguage() === 'gr' ? 'el-GR' : 'en-US') : 'en-US';
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'Europe/Athens'
+        }).format(notificationDate);
     }
     
     // Modal methods
@@ -552,7 +583,7 @@ class DeliveryApp {
         
         // Check if shops exist first
         if (this.shops.length === 0) {
-            this.showToast('❌ Please add at least one shop before creating orders', 'error');
+            this.showToast(`❌ ${window.t ? window.t('pleaseAddShops') : 'Please add at least one shop before creating orders'}`, 'error');
             setTimeout(() => {
                 this.navigateToPage('settings');
             }, 1500);
@@ -561,7 +592,7 @@ class DeliveryApp {
         
         // Check if categories exist
         if (this.categories.length === 0) {
-            this.showToast('❌ No categories available. Please contact admin.', 'error');
+            this.showToast(`❌ ${window.t ? window.t('noCategoriesAvailable') : 'No categories available. Please contact admin.'}`, 'error');
             return;
         }
         
@@ -635,12 +666,12 @@ class DeliveryApp {
                             font-weight: 700;
                             color: #1f2937;
                             margin: 0 0 4px 0;
-                        ">Select Category</h3>
+                        ">${window.t ? window.t('selectCategoryTitle') : 'Select Category'}</h3>
                         <p style="
                             font-size: 14px;
                             color: #6b7280;
                             margin: 0;
-                        ">Choose the category for your order</p>
+                        ">${window.t ? window.t('selectCategoryDesc') : 'Choose the category for your order'}</p>
                     </div>
                     <button class="modal-close" type="button" style="
                         position: absolute;
@@ -2132,6 +2163,15 @@ class DeliveryApp {
                 await this.loadCategories();
             }
 
+            console.log('Categories available for edit:', this.categories?.length || 0);
+            console.log('Shop category ID:', shop.category_id);
+            
+            // Double check that categories are loaded
+            if (!this.categories || this.categories.length === 0) {
+                this.showToast('Categories not available. Please try again.', 'error');
+                return;
+            }
+
         // Remove existing modal if any
         const existingEditModal = document.getElementById('edit-shop-modal');
         if (existingEditModal) {
@@ -2248,11 +2288,15 @@ class DeliveryApp {
                                 "
                             >
                                 <option value="">Select a category</option>
-                                ${this.categories.filter(cat => cat.is_active).map(category => `
-                                    <option value="${category.id}" ${shop.category_id === category.id ? 'selected' : ''}>
-                                        ${category.name}
-                                    </option>
-                                `).join('')}
+                                ${this.categories.filter(cat => cat.is_active).map(category => {
+                                    const isSelected = parseInt(shop.category_id) === parseInt(category.id);
+                                    console.log(`Category ${category.name} (ID: ${category.id}) - Shop Category ID: ${shop.category_id} - Selected: ${isSelected}`);
+                                    return `
+                                        <option value="${category.id}" ${isSelected ? 'selected' : ''}>
+                                            ${category.name}
+                                        </option>
+                                    `;
+                                }).join('')}
                             </select>
                             <div class="category-form-error" style="
                                 color: #ef4444;
@@ -3463,6 +3507,40 @@ class DeliveryApp {
             
             const settingsHtml = `
                 <div class="settings-container">
+                
+                <!-- Language Settings Section -->
+                <div class="language-settings">
+                    <div class="setting-header">
+                        <div class="setting-icon">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <div class="setting-info">
+                            <h3 data-translate="languageSettings">Language Settings</h3>
+                            <p data-translate="languageSettingsDesc">Choose your preferred language</p>
+                        </div>
+                    </div>
+                    <div class="language-controls">
+                        <div class="language-control">
+                            <div class="control-info">
+                                <h4 data-translate="currentLanguage">Current Language</h4>
+                                <p id="current-language-display">${window.i18n ? window.i18n.getCurrentLanguage() === 'en' ? 'English' : 'Ελληνικά' : 'English'}</p>
+                            </div>
+                            <div class="control-actions">
+                                <div class="language-switch">
+                                    <button class="language-btn ${window.i18n && window.i18n.getCurrentLanguage() === 'en' ? 'active' : ''}" id="lang-en">
+                                        <i class="fas"></i>
+                                        <span data-translate="english">English</span>
+                                    </button>
+                                    <button class="language-btn ${window.i18n && window.i18n.getCurrentLanguage() === 'gr' ? 'active' : ''}" id="lang-gr">
+                                        <i class="fas"></i>
+                                        <span data-translate="greek">Greek</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Notification Settings Section -->
                 <div class="notification-settings">
                     <div class="setting-header">
@@ -3470,38 +3548,38 @@ class DeliveryApp {
                             <i class="fas fa-bell"></i>
                         </div>
                         <div class="setting-info">
-                            <h3>Notification Settings</h3>
-                            <p>Configure how you receive notifications from shops</p>
+                            <h3 data-translate="notificationSettings">Notification Settings</h3>
+                            <p data-translate="notificationSettingsDesc">Configure how you receive notifications from shops</p>
                         </div>
                     </div>
                     <div class="notification-controls">
                         <div class="notification-control">
                             <div class="control-info">
-                                <h4>Sound Notifications</h4>
-                                <p>Play a sound when receiving new notifications</p>
+                                <h4 data-translate="soundNotificationsLabel">${window.t ? window.t('soundNotificationsLabel') : 'Sound Notifications'}</h4>
+                                <p data-translate="soundNotificationsDesc">${window.t ? window.t('soundNotificationsDesc') : 'Play a sound when receiving new notifications'}</p>
                             </div>
                             <div class="control-actions">
                                     <button class="sound-toggle-btn ${notificationSettings.soundEnabled ? 'enabled' : 'disabled'}" id="sound-toggle">
                                         <i class="fas ${notificationSettings.soundEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
-                                        ${notificationSettings.soundEnabled ? 'Enabled' : 'Disabled'}
+                                        ${window.t ? window.t(notificationSettings.soundEnabled ? 'enabled' : 'disabled') : (notificationSettings.soundEnabled ? 'Enabled' : 'Disabled')}
                                     </button>
                                     <button class="test-sound-btn" id="test-sound-btn">
                                         <i class="fas fa-play"></i>
-                                        Test Sound
+                                        ${window.t ? window.t('testSound') : 'Test Sound'}
                                 </button>
                             </div>
                         </div>
                         <div class="notification-control">
                             <div class="control-info">
-                                <h4>Browser Notifications</h4>
-                                <p>Show desktop notifications even when the app is in background</p>
+                                <h4 data-translate="browserNotificationsLabel">${window.t ? window.t('browserNotificationsLabel') : 'Browser Notifications'}</h4>
+                                <p data-translate="browserNotificationsDesc">${window.t ? window.t('browserNotificationsDesc') : 'Show desktop notifications even when the app is in background'}</p>
                             </div>
                             <div class="control-actions">
                                 ${notificationPermission === 'granted' 
-                                    ? '<button class="permission-button granted"><i class="fas fa-check"></i> Enabled</button>'
+                                    ? `<button class="permission-button granted"><i class="fas fa-check"></i> ${window.t ? window.t('enabled') : 'Enabled'}</button>`
                                     : notificationPermission === 'denied'
-                                        ? '<button class="permission-button" disabled><i class="fas fa-ban"></i> Blocked by Browser</button>'
-                                        : '<button class="permission-button" id="enable-notifications-btn"><i class="fas fa-bell"></i> Enable</button>'
+                                        ? `<button class="permission-button" disabled><i class="fas fa-ban"></i> ${window.t ? window.t('blocked') : 'Blocked by Browser'}</button>`
+                                        : `<button class="permission-button" id="enable-notifications-btn"><i class="fas fa-bell"></i> ${window.t ? window.t('enable') : 'Enable'}</button>`
                                 }
                             </div>
                         </div>
@@ -3517,6 +3595,9 @@ class DeliveryApp {
             
             // Setup notification settings listeners
             this.setupNotificationSettingsListeners();
+            
+            // Setup language switch listeners
+            this.setupLanguageSettingsListeners();
             
             // Setup shop menu listeners
             this.setupShopMenuListeners();
@@ -5751,30 +5832,48 @@ class DeliveryApp {
         window.history.replaceState(null, null, window.location.href);
         
         // Add multiple entries to prevent back navigation
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 20; i++) {
             window.history.pushState(null, null, window.location.href);
         }
         
+        // Track consecutive back button presses
+        let backPressCount = 0;
+        let lastBackPress = 0;
+        
         // Handle popstate events (back button presses)
         window.addEventListener('popstate', (event) => {
-            // Prevent navigation and stay on current page
+            event.preventDefault();
+            
+            // Always push state to prevent navigation
             window.history.pushState(null, null, window.location.href);
             
-            // Show warning to user about using logout instead
-            this.showToast('Please use the logout button to exit the app', 'warning');
-            
-            // Vibrate if supported (mobile devices)
-            if ('vibrate' in navigator) {
-                navigator.vibrate(100);
+            // Reset counter if enough time has passed
+            const now = Date.now();
+            if (now - lastBackPress > 2000) {
+                backPressCount = 0;
             }
-        });
-        
-        // Prevent browser back/forward buttons on desktop
-        window.addEventListener('beforeunload', (event) => {
-            // This will show browser confirmation dialog
-            const message = 'Please use the logout button to exit the app safely.';
-            event.returnValue = message;
-            return message;
+            
+            backPressCount++;
+            lastBackPress = now;
+            
+            // Show appropriate message based on press count
+            if (backPressCount === 1) {
+                this.showToast('Please use the logout button to exit the app', 'warning');
+            } else if (backPressCount === 2) {
+                this.showToast('Back button disabled for app security. Use logout to exit.', 'warning');
+            } else {
+                this.showToast('❌ Cannot exit app via back button. Please use logout.', 'error');
+            }
+            
+            // Vibrate for mobile feedback
+            if ('vibrate' in navigator) {
+                navigator.vibrate([100, 50, 100]);
+            }
+            
+            // Add more history entries to make it harder to navigate back
+            for (let i = 0; i < 5; i++) {
+                window.history.pushState(null, null, window.location.href);
+            }
         });
         
         // Additional mobile-specific prevention
@@ -5788,7 +5887,15 @@ class DeliveryApp {
             });
         }
         
-        console.log('Enhanced back navigation prevention activated');
+        // Prevent page unload for mobile PWAs
+        window.addEventListener('pagehide', (event) => {
+            // Only prevent if it's not a normal navigation
+            if (!event.persisted) {
+                event.preventDefault();
+            }
+        });
+        
+        console.log('Enhanced back navigation prevention activated (no browser exit dialogs)');
     }
 
     // Setup comprehensive push notification system
@@ -7382,6 +7489,219 @@ class DeliveryApp {
         }
         if (this.currentPage === 'home') {
             this.renderOrders();
+        }
+    }
+    
+    // Initialize translation system
+    async initTranslations() {
+        if (window.i18n) {
+            // Initialize translation manager
+            await window.i18n.init();
+            
+            // Add observer for language changes
+            window.i18n.addObserver((language) => {
+                this.onLanguageChange(language);
+            });
+            
+            // Apply initial translations
+            this.applyTranslations();
+        }
+    }
+    
+    // Handle language change
+    onLanguageChange(language) {
+        console.log('Language changed to:', language);
+        
+        // Update current language display
+        const currentLangDisplay = document.getElementById('current-language-display');
+        if (currentLangDisplay) {
+            currentLangDisplay.textContent = language === 'en' ? 'English' : 'Ελληνικά';
+        }
+        
+        // Update language button states
+        const langButtons = document.querySelectorAll('.language-btn');
+        langButtons.forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.id === `lang-${language}`) {
+                btn.classList.add('active');
+            }
+        });
+        
+        // Apply translations to all elements
+        this.applyTranslations();
+        
+        // Refresh current page to apply translations
+        this.refreshCurrentPage();
+        
+        // Show success message
+        this.showToast(window.t('languageChanged'), 'success');
+    }
+    
+    // Apply translations to all elements
+    applyTranslations() {
+        if (window.i18n) {
+            window.i18n.applyTranslations();
+        }
+        
+        // Update dynamic content that can't use data-translate attributes
+        this.updateDynamicTranslations();
+    }
+    
+    // Update dynamic content translations
+    updateDynamicTranslations() {
+        // Update navigation
+        const navItems = document.querySelectorAll('.nav-item span');
+        const navTranslations = ['home', 'orders', 'notifications', 'settings', 'profile'];
+        navItems.forEach((item, index) => {
+            if (navTranslations[index] && window.t) {
+                item.textContent = window.t(navTranslations[index]);
+            }
+        });
+        
+        // Update page titles
+        const pageHeaders = document.querySelectorAll('.page-header h2');
+        pageHeaders.forEach(header => {
+            const page = header.closest('.page');
+            if (page && window.t) {
+                switch (page.id) {
+                    case 'home-page':
+                        header.textContent = window.t('driverDashboard');
+                        break;
+                    case 'orders-page':
+                        header.textContent = window.t('allOrders');
+                        break;
+                    case 'notifications-page':
+                        header.textContent = window.t('allNotifications');
+                        break;
+                    case 'settings-page':
+                        header.textContent = window.t('settingsTitle');
+                        break;
+                    case 'profile-page':
+                        header.textContent = window.t('profileTitle');
+                        break;
+                }
+            }
+        });
+
+        // Update floating button tooltip
+        const floatingBtn = document.getElementById('add-order-btn');
+        if (floatingBtn && window.t) {
+            floatingBtn.title = window.t('addOrderTooltip');
+        }
+
+        // Update stats labels
+        const statsLabels = document.querySelectorAll('.stat-content p');
+        const statTranslations = ['totalEarnings', 'totalOrders', 'todaysOrders'];
+        statsLabels.forEach((label, index) => {
+            if (statTranslations[index] && window.t) {
+                label.textContent = window.t(statTranslations[index]);
+            }
+        });
+
+        // Update any existing error/success messages
+        this.updateMessageElements();
+        
+        // Update time formatting
+        this.updateTimeDisplays();
+    }
+
+    // Update message elements (toasts, notifications, etc.)
+    updateMessageElements() {
+        // Update any visible toasts
+        const toasts = document.querySelectorAll('.toast');
+        toasts.forEach(toast => {
+            const messageEl = toast.querySelector('.toast-message');
+            if (messageEl && window.i18n) {
+                const currentText = messageEl.textContent;
+                const translatedText = window.i18n.translateText(currentText);
+                if (translatedText !== currentText) {
+                    messageEl.textContent = translatedText;
+                }
+            }
+        });
+
+        // Update notification items
+        const notificationItems = document.querySelectorAll('.notification-item');
+        notificationItems.forEach(item => {
+            const timeEl = item.querySelector('.notification-time');
+            if (timeEl) {
+                const originalTime = timeEl.getAttribute('data-original-time');
+                if (originalTime) {
+                    timeEl.textContent = this.formatTimeAgo(originalTime);
+                }
+            }
+        });
+    }
+    
+    // Update time displays
+    updateTimeDisplays() {
+        // Update notification times
+        const timeElements = document.querySelectorAll('.notification-time, .time-ago');
+        timeElements.forEach(element => {
+            const originalTime = element.getAttribute('data-original-time');
+            if (originalTime) {
+                element.textContent = this.formatTimeAgo(originalTime);
+            }
+        });
+    }
+    
+    // Refresh current page to apply translations
+    refreshCurrentPage() {
+        const currentPage = this.currentPage;
+        
+        // Re-render current page content
+        switch (currentPage) {
+            case 'home':
+                this.updateUI();
+                break;
+            case 'orders':
+                this.renderOrders();
+                break;
+            case 'notifications':
+                this.loadNotifications();
+                break;
+            case 'settings':
+                this.renderSettingsPage();
+                break;
+            case 'profile':
+                this.loadProfileData();
+                break;
+        }
+    }
+    
+    // Setup language settings listeners
+    setupLanguageSettingsListeners() {
+        const langEnBtn = document.getElementById('lang-en');
+        const langGrBtn = document.getElementById('lang-gr');
+        
+        if (langEnBtn) {
+            langEnBtn.addEventListener('click', async () => {
+                await this.changeLanguage('en');
+            });
+        }
+        
+        if (langGrBtn) {
+            langGrBtn.addEventListener('click', async () => {
+                await this.changeLanguage('gr');
+            });
+        }
+    }
+    
+    // Change language
+    async changeLanguage(language) {
+        if (window.i18n) {
+            try {
+                const success = await window.i18n.setLanguage(language);
+                if (success) {
+                    console.log(`Language changed to: ${language}`);
+                } else {
+                    console.error(`Failed to change language to: ${language}`);
+                    this.showToast(window.t('errorOccurred'), 'error');
+                }
+            } catch (error) {
+                console.error('Error changing language:', error);
+                this.showToast(window.t('errorOccurred'), 'error');
+            }
         }
     }
 }

@@ -13,6 +13,15 @@ class Dashboard {
         this.driversToShow = 4;
         this.driverObserver = null;
         
+        // Session management
+        this.sessionTimeout = 15 * 60 * 1000; // 15 minutes in milliseconds
+        this.sessionCheckInterval = null;
+        this.activityTimeout = null;
+        this.isClosing = false;
+        this.sessionStartTime = null;
+        this.sessionManagementActive = false;
+        this.activityEventsBound = false;
+        
         this.init();
     }
     
@@ -98,6 +107,7 @@ class Dashboard {
             users: 'Driver Management',
             shops: 'Shop Management',
             categories: 'Category Management',
+            logs: 'Admin Access Logs',
             'all-users': 'All Users'
         };
         document.getElementById('page-title').textContent = titles[section];
@@ -116,6 +126,8 @@ class Dashboard {
             if (grid) grid.scrollTop = 0;
         } else if (section === 'categories') {
             this.loadCategories();
+        } else if (section === 'logs') {
+            this.loadLogs();
         } else if (section === 'all-users') {
             this.renderUsers();
         }
@@ -1821,19 +1833,27 @@ class Dashboard {
     async loadCategories() {
         console.log('Loading categories...');
         try {
+            console.log('Fetching from: /api/admin/categories');
             const response = await fetch('/api/admin/categories');
+            
+            console.log('Response status:', response.status, response.statusText);
+            
             if (response.ok) {
                 const result = await response.json();
+                console.log('Categories loaded successfully:', result);
                 this.categories = result.categories || [];
+                console.log('Categories count:', this.categories.length);
                 this.renderCategories();
             } else {
-                console.error('Failed to load categories');
-                this.showToast('Failed to load categories', 'error');
+                console.error('Failed to load categories - Status:', response.status);
+                const errorText = await response.text();
+                console.error('Error response:', errorText);
+                this.showToast(`Failed to load categories (${response.status})`, 'error');
                 this.renderCategoriesEmpty();
             }
         } catch (error) {
             console.error('Error loading categories:', error);
-            this.showToast('Error loading categories', 'error');
+            this.showToast('Network error loading categories', 'error');
             this.renderCategoriesEmpty();
         }
     }
@@ -2244,6 +2264,621 @@ class Dashboard {
                 }
             });
         });
+    }
+
+    // Logs functionality
+    async loadLogs() {
+        try {
+            this.renderLogsLoading();
+            this.currentPage = 1;
+            this.logsPerPage = 25;
+            this.allLogs = [];
+            this.filteredLogs = [];
+            this.setupLogsFilters();
+            
+            // Load real logs from database
+            await this.loadLogsFromDatabase();
+            
+            this.updateLogsStats();
+            this.renderLogs();
+            this.showReadOnlyWarning();
+        } catch (error) {
+            console.error('Error loading logs:', error);
+            this.showToast('Failed to load logs', 'error');
+            this.renderLogsEmpty();
+        }
+    }
+
+    async loadLogsFromDatabase() {
+        try {
+            // Check if Supabase is configured
+            if (!isSupabaseConfigured || !supabase) {
+                console.log('Supabase not configured, no logs available yet');
+                this.allLogs = [];
+                this.filteredLogs = [];
+                return;
+            }
+
+            console.log('Loading logs from database...');
+            const { data: logs, error } = await supabase
+                .from('admin_login_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1000);
+
+            if (error) {
+                console.error('Database logs error:', error);
+                this.allLogs = [];
+                this.filteredLogs = [];
+                return;
+            }
+
+            console.log(`Loaded ${logs.length} log entries from database`);
+
+            // Process logs with location lookup
+            this.allLogs = await Promise.all(logs.map(async (log) => {
+                const location = await this.getLocationFromIP(log.ip_address);
+                return {
+                    ...log,
+                    location: location
+                };
+            }));
+
+            this.filteredLogs = [...this.allLogs];
+            console.log('Logs processed successfully');
+        } catch (error) {
+            console.error('Error loading logs from database:', error);
+            this.allLogs = [];
+            this.filteredLogs = [];
+        }
+    }
+
+    // No sample logs - system uses real data only
+
+    async getLocationFromIP(ip) {
+        if (!ip || ip === 'unknown' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('127.')) {
+            return 'Local Network';
+        }
+        
+        // Avoid CORS issues by not making external API calls
+        // Return a simplified location based on IP patterns
+        try {
+            // Basic IP geolocation without external API calls
+            if (ip.startsWith('85.')) return 'Europe';
+            if (ip.startsWith('46.')) return 'Europe'; 
+            if (ip.startsWith('217.')) return 'Europe';
+            if (ip.startsWith('31.')) return 'Europe';
+            if (ip.startsWith('176.')) return 'Europe';
+            if (ip.startsWith('8.8.')) return 'Google DNS';
+            if (ip.startsWith('1.1.')) return 'Cloudflare DNS';
+            if (ip.startsWith('208.67.')) return 'OpenDNS';
+            
+            // For other IPs, just return a general location
+            return 'External Location';
+        } catch (error) {
+            return 'Unknown Location';
+        }
+    }
+
+    setupLogsFilters() {
+        const searchInput = document.getElementById('logs-search');
+        const filterSelect = document.getElementById('logs-filter');
+        
+        if (searchInput) {
+            searchInput.addEventListener('input', () => this.applyLogsFilter());
+        }
+        
+        if (filterSelect) {
+            filterSelect.addEventListener('change', () => this.applyLogsFilter());
+        }
+    }
+
+    applyLogsFilter() {
+        const searchTerm = document.getElementById('logs-search')?.value.toLowerCase() || '';
+        const filterType = document.getElementById('logs-filter')?.value || 'all';
+        
+        this.filteredLogs = this.allLogs.filter(log => {
+            // Search filter
+            const matchesSearch = !searchTerm || 
+                log.username.toLowerCase().includes(searchTerm) ||
+                log.ip_address.toLowerCase().includes(searchTerm) ||
+                (log.location && log.location.toLowerCase().includes(searchTerm)) ||
+                (log.failure_reason && log.failure_reason.toLowerCase().includes(searchTerm));
+            
+            // Type filter
+            let matchesType = true;
+            if (filterType === 'success') {
+                matchesType = log.login_successful;
+            } else if (filterType === 'failed') {
+                matchesType = !log.login_successful;
+            } else if (filterType === 'today') {
+                const today = new Date().toDateString();
+                matchesType = new Date(log.created_at).toDateString() === today;
+            } else if (filterType === 'week') {
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                matchesType = new Date(log.created_at) >= weekAgo;
+            }
+            
+            return matchesSearch && matchesType;
+        });
+        
+        this.currentPage = 1;
+        this.renderLogs();
+    }
+
+    updateLogsStats() {
+        const successfulLogins = this.allLogs.filter(log => log.login_successful).length;
+        const failedLogins = this.allLogs.filter(log => !log.login_successful).length;
+        const uniqueIps = new Set(this.allLogs.map(log => log.ip_address)).size;
+        
+        // Get last successful login
+        const lastSuccessfulLogin = this.allLogs.find(log => log.login_successful);
+        const lastLoginTime = lastSuccessfulLogin 
+            ? this.timeAgo(new Date(lastSuccessfulLogin.created_at))
+            : 'Never';
+        
+        document.getElementById('successful-logins').textContent = successfulLogins;
+        document.getElementById('failed-logins').textContent = failedLogins;
+        document.getElementById('last-login-time').textContent = lastLoginTime;
+        document.getElementById('unique-ips').textContent = uniqueIps;
+    }
+
+    renderLogs() {
+        const tbody = document.getElementById('logs-table-body');
+        if (!tbody) return;
+        
+        const startIndex = (this.currentPage - 1) * this.logsPerPage;
+        const endIndex = startIndex + this.logsPerPage;
+        const logsToShow = this.filteredLogs.slice(startIndex, endIndex);
+        
+        if (logsToShow.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="logs-empty">
+                        <i class="fas fa-file-alt"></i>
+                        <h3>No logs found</h3>
+                        <p>No access logs match your current filters.</p>
+                    </td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = logsToShow.map(log => `
+                <tr>
+                    <td>
+                        <span class="log-status ${log.login_successful ? 'success' : 'failed'}">
+                            <i class="fas fa-${log.login_successful ? 'check' : 'times'}-circle"></i>
+                            ${log.login_successful ? 'Success' : 'Failed'}
+                        </span>
+                    </td>
+                    <td class="log-datetime">${this.formatFullDateTime(log.created_at)}</td>
+                    <td class="log-username">${log.username}</td>
+                    <td class="log-ip">${log.ip_address}</td>
+                    <td class="log-location">${log.location || 'Unknown'}</td>
+                    <td class="log-user-agent log-tooltip" data-tooltip="${log.user_agent}">
+                        ${this.getBrowserFromUserAgent(log.user_agent)}
+                    </td>
+                    <td class="log-reason">${log.failure_reason || 'Successful login'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        this.updateLogsPagination();
+    }
+
+    formatFullDateTime(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    }
+
+    getBrowserFromUserAgent(userAgent) {
+        if (!userAgent) return 'Unknown';
+        
+        if (userAgent.includes('Chrome')) return 'Chrome';
+        if (userAgent.includes('Firefox')) return 'Firefox';
+        if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari';
+        if (userAgent.includes('Edge')) return 'Edge';
+        if (userAgent.includes('Opera')) return 'Opera';
+        
+        return 'Other';
+    }
+
+    updateLogsPagination() {
+        const totalPages = Math.ceil(this.filteredLogs.length / this.logsPerPage);
+        
+        document.getElementById('current-page').textContent = this.currentPage;
+        document.getElementById('total-pages').textContent = totalPages;
+        
+        const prevBtn = document.getElementById('logs-prev-btn');
+        const nextBtn = document.getElementById('logs-next-btn');
+        
+        if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
+        if (nextBtn) nextBtn.disabled = this.currentPage >= totalPages;
+    }
+
+    changePage(direction) {
+        const totalPages = Math.ceil(this.filteredLogs.length / this.logsPerPage);
+        const newPage = this.currentPage + direction;
+        
+        if (newPage >= 1 && newPage <= totalPages) {
+            this.currentPage = newPage;
+            this.renderLogs();
+        }
+    }
+
+    refreshLogs() {
+        this.loadLogs();
+        this.showToast('Logs refreshed', 'success');
+    }
+
+    exportLogs() {
+        try {
+            const csvContent = this.generateLogsCSV();
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `admin-logs-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            this.showToast('Logs exported successfully', 'success');
+        } catch (error) {
+            console.error('Error exporting logs:', error);
+            this.showToast('Failed to export logs', 'error');
+        }
+    }
+
+    generateLogsCSV() {
+        const headers = ['Status', 'Date & Time', 'Username', 'IP Address', 'Location', 'User Agent', 'Reason'];
+        const rows = this.filteredLogs.map(log => [
+            log.login_successful ? 'Success' : 'Failed',
+            this.formatFullDateTime(log.created_at),
+            log.username,
+            log.ip_address,
+            log.location || 'Unknown',
+            log.user_agent,
+            log.failure_reason || 'Successful login'
+        ]);
+        
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(field => `"${field}"`).join(','))
+            .join('\n');
+        
+        return csvContent;
+    }
+
+    renderLogsLoading() {
+        const tbody = document.getElementById('logs-table-body');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="logs-loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading access logs...
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    renderLogsEmpty() {
+        const tbody = document.getElementById('logs-table-body');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="logs-empty">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h3>Unable to load logs</h3>
+                        <p>There was an error loading the access logs. Please try again.</p>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    showReadOnlyWarning() {
+        const logsSection = document.getElementById('logs-section');
+        if (logsSection && !logsSection.querySelector('.readonly-warning')) {
+            const warning = document.createElement('div');
+            warning.className = 'readonly-warning';
+            warning.innerHTML = `
+                <i class="fas fa-shield-alt"></i>
+                <span>These logs are read-only for security purposes. They cannot be modified or deleted from the dashboard.</span>
+            `;
+            
+            const header = logsSection.querySelector('.section-header');
+            if (header) {
+                header.insertAdjacentElement('afterend', warning);
+            }
+        }
+    }
+
+    // Session Management Functions
+    initSessionManagement() {
+        if (this.sessionManagementActive) {
+            console.log('Session management already active');
+            return;
+        }
+        
+        console.log('Initializing session management...');
+        this.sessionManagementActive = true;
+        this.sessionStartTime = Date.now();
+        
+        // Check session validity every minute
+        this.sessionCheckInterval = setInterval(() => {
+            this.checkSessionValidity();
+        }, 60000); // Check every minute
+        
+        // Set up automatic logout after 15 minutes
+        this.resetActivityTimeout();
+        
+        // Track user activity to reset timeout
+        this.bindActivityEvents();
+        
+        // Handle page visibility changes (close/refresh detection)
+        this.bindVisibilityEvents();
+        
+        console.log('Session management initialized successfully');
+    }
+    
+    bindActivityEvents() {
+        // Only bind if not already bound
+        if (this.activityEventsBound) {
+            return;
+        }
+        
+        // Reset timeout on any user activity
+        const resetTimeout = () => {
+            if (this.sessionManagementActive) {
+                this.resetActivityTimeout();
+            }
+        };
+        
+        // Track various user activities
+        document.addEventListener('mousedown', resetTimeout);
+        document.addEventListener('mousemove', resetTimeout);
+        document.addEventListener('keypress', resetTimeout);
+        document.addEventListener('scroll', resetTimeout);
+        document.addEventListener('click', resetTimeout);
+        
+        this.activityEventsBound = true;
+    }
+    
+    resetActivityTimeout() {
+        // Only reset if session management is active
+        if (!this.sessionManagementActive) {
+            return;
+        }
+        
+        // Clear existing timeout
+        if (this.activityTimeout) {
+            clearTimeout(this.activityTimeout);
+        }
+        
+        // Update localStorage session expiry
+        localStorage.setItem('admin_session_expiry', (Date.now() + this.sessionTimeout).toString());
+        
+        // Set new timeout for 15 minutes
+        this.activityTimeout = setTimeout(() => {
+            this.logoutUser('Session timeout - 15 minutes of inactivity');
+        }, this.sessionTimeout);
+    }
+    
+    bindVisibilityEvents() {
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Page is hidden (tab switch, minimize, etc.)
+                this.handlePageHidden();
+            } else {
+                // Page is visible again
+                this.handlePageVisible();
+            }
+        });
+        
+        // Handle beforeunload (close/refresh)
+        window.addEventListener('beforeunload', (e) => {
+            this.handleBeforeUnload(e);
+        });
+        
+        // Handle actual unload
+        window.addEventListener('unload', () => {
+            this.handlePageUnload();
+        });
+    }
+    
+    handlePageHidden() {
+        // Don't logout on tab switch or minimize
+        // Only logout on actual close (handled in beforeunload)
+        console.log('Page hidden');
+    }
+    
+    handlePageVisible() {
+        // Only handle if session management is active
+        if (!this.sessionManagementActive) {
+            return;
+        }
+        
+        // Check if session is still valid when page becomes visible
+        this.checkSessionValidity();
+        this.resetActivityTimeout();
+    }
+    
+    handleBeforeUnload(e) {
+        // Only handle if session management is active
+        if (!this.sessionManagementActive) {
+            return;
+        }
+        
+        // Detect if this is a refresh or actual close
+        const isRefresh = e.clientX === 0 && e.clientY === 0;
+        const isClose = !isRefresh;
+        
+        if (isClose) {
+            // User is closing the tab/window
+            this.isClosing = true;
+            this.logoutUser('User closed the browser/tab');
+        }
+    }
+    
+    handlePageUnload() {
+        // Final cleanup on page unload
+        if (this.sessionCheckInterval) {
+            clearInterval(this.sessionCheckInterval);
+        }
+        if (this.activityTimeout) {
+            clearTimeout(this.activityTimeout);
+        }
+    }
+    
+    checkSessionValidity() {
+        // Don't check if session management isn't active
+        if (!this.sessionManagementActive || !this.sessionStartTime) {
+            return;
+        }
+        
+        // Check if session token exists
+        const sessionToken = localStorage.getItem('admin_session_token');
+        const sessionExpiry = localStorage.getItem('admin_session_expiry');
+        
+        if (!sessionToken || !sessionExpiry) {
+            console.log('No session tokens found, session management stopping');
+            this.stopSessionManagement();
+            return;
+        }
+        
+        // Check if session is expired based on localStorage expiry
+        if (Date.now() > parseInt(sessionExpiry)) {
+            this.logoutUser('Session token expired');
+            return;
+        }
+        
+        // Check absolute session time (15 minutes from start)
+        const currentTime = Date.now();
+        const sessionAge = currentTime - this.sessionStartTime;
+        
+        if (sessionAge >= this.sessionTimeout) {
+            this.logoutUser('Session expired - 15 minutes elapsed');
+            return;
+        }
+        
+        console.log(`Session valid. Age: ${Math.floor(sessionAge / 1000)}s / ${Math.floor(this.sessionTimeout / 1000)}s`);
+    }
+    
+    stopSessionManagement() {
+        if (!this.sessionManagementActive) {
+            return;
+        }
+        
+        console.log('Stopping session management...');
+        this.sessionManagementActive = false;
+        this.sessionStartTime = null;
+        
+        // Clear intervals and timeouts
+        if (this.sessionCheckInterval) {
+            clearInterval(this.sessionCheckInterval);
+            this.sessionCheckInterval = null;
+        }
+        if (this.activityTimeout) {
+            clearTimeout(this.activityTimeout);
+            this.activityTimeout = null;
+        }
+        
+        console.log('Session management stopped');
+    }
+
+    logoutUser(reason) {
+        console.log('Logging out user:', reason);
+        
+        // Stop session management
+        this.stopSessionManagement();
+        
+        // Clear all session data
+        localStorage.removeItem('admin_session_token');
+        localStorage.removeItem('admin_session_expiry');
+        localStorage.removeItem('admin_username');
+        
+        // Log the logout event
+        this.logAdminActivity('logout', reason);
+        
+        // Show logout message
+        this.showToast('Session expired. Please login again.', 'error');
+        
+        // Redirect to login after short delay
+        setTimeout(() => {
+            window.location.href = '/dashboard/';
+        }, 2000);
+    }
+    
+    async logAdminActivity(action, details) {
+        try {
+            // Log admin activity if Supabase is configured
+            if (isSupabaseConfigured && supabase) {
+                const username = localStorage.getItem('admin_username') || 'Unknown';
+                const sessionToken = localStorage.getItem('admin_session_token');
+                
+                // Get client info
+                const clientInfo = {
+                    userAgent: navigator.userAgent,
+                    ip: await this.getClientIP(),
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Call the logging function
+                await supabase.rpc('log_admin_activity', {
+                    p_admin_id: null, // Would need actual admin ID
+                    p_username: username,
+                    p_action: action,
+                    p_resource_type: 'session',
+                    p_resource_id: sessionToken,
+                    p_details: JSON.stringify({ reason: details, ...clientInfo }),
+                    p_ip_address: clientInfo.ip,
+                    p_user_agent: clientInfo.userAgent
+                });
+            }
+        } catch (error) {
+            console.error('Error logging admin activity:', error);
+        }
+    }
+    
+    async getClientIP() {
+        try {
+            const response = await fetch('https://api.ipify.org?format=json');
+            const data = await response.json();
+            return data.ip;
+        } catch (error) {
+            return 'unknown';
+        }
+    }
+    
+    // Check if user is authenticated
+    isAuthenticated() {
+        const sessionToken = localStorage.getItem('admin_session_token');
+        const sessionExpiry = localStorage.getItem('admin_session_expiry');
+        
+        if (!sessionToken || !sessionExpiry) {
+            return false;
+        }
+        
+        if (Date.now() > parseInt(sessionExpiry)) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Refresh session on activity
+    refreshSession() {
+        if (this.isAuthenticated()) {
+            const newExpiry = Date.now() + this.sessionTimeout;
+            localStorage.setItem('admin_session_expiry', newExpiry.toString());
+            this.sessionStartTime = Date.now();
+            console.log('Session refreshed');
+        }
     }
 }
 
